@@ -1,4 +1,5 @@
 # Texas Hold'em Game Logic
+import os
 import time
 from treys import Card, Evaluator, Deck
 from rich.table import Table
@@ -20,6 +21,9 @@ class TexasHoldemGame:
         self.hand_history = []
     
     def start_hand(self):
+        # Clear screen for new hand
+        os.system('cls' if os.name == 'nt' else 'clear')
+        
         # Reset game state
         self.deck = Deck()
         self.community_cards = []
@@ -48,10 +52,15 @@ class TexasHoldemGame:
             card2 = self.deck.draw(1)[0]
             player.receive_cards([card1, card2])
         
-        self.display_game_state("Pre-flop")
+        self.display_persistent_game_state("Pre-flop")
     
     def betting_round(self, round_name):
-        console.print(f"[bold green]\\n--- {round_name} Betting Round ---[/bold green]")
+        console.rule(f"[bold green]--- {round_name} Betting Round ---[/bold green]")
+        
+        # Clear screen for clean betting round display
+        if round_name != "Pre-flop":  # Don't clear on pre-flop as it's already cleared from start_hand
+            os.system('cls' if os.name == 'nt' else 'clear')
+            self.display_persistent_game_state(round_name)
         
         # Determine starting position based on betting round
         if round_name == "Pre-flop":
@@ -78,6 +87,12 @@ class TexasHoldemGame:
                     'community_cards': self.community_cards,
                     'player_bet': player.current_bet
                 }
+                
+                # Clear screen and show updated game state at top
+                os.system('cls' if os.name == 'nt' else 'clear')
+                
+                # Always display the full game state at the top
+                self.display_persistent_game_state(round_name)
                 
                 # Create player action table
                 action_table = Table(title=f"{player.name}'s Turn")
@@ -153,6 +168,11 @@ class TexasHoldemGame:
                 # Input interrupt between bot actions
                 input(f"Press Enter to continue after {player.name}'s action...")
             
+            # Clear screen and refresh display after each player (whether they acted or not)
+            # This will be done at the beginning of the next player's turn instead
+            # os.system('cls' if os.name == 'nt' else 'clear')
+            # self.display_persistent_game_state(round_name)
+            
             current_pos = (current_pos + 1) % len(self.players)
             players_acted += 1
             
@@ -167,7 +187,7 @@ class TexasHoldemGame:
         self.display_game_state("Community Cards")
     
     def showdown(self):
-        console.print("[bold green]\\n--- Showdown ---[/bold green]")
+        console.print("[bold green]--- Showdown ---[/bold green]")
         
         active_players = [p for p in self.players if not p.folded]
         
@@ -212,8 +232,94 @@ class TexasHoldemGame:
             winner.chips += prize
             console.print(f"[bold yellow]{winner.name} wins {prize} chips with {self.evaluator.class_to_string(self.evaluator.get_rank_class(winning_score))}[/bold yellow]")
     
+    def display_persistent_game_state(self, round_name):
+        """Display the persistent game state that stays at the top of the screen"""
+        
+        # 1. GAME-WIDE STATE: Display all players table first (most persistent)
+        table = Table(title="All Players")
+        table.add_column("Position", style="yellow")
+        table.add_column("Name", style="cyan")
+        table.add_column("Hole Cards", style="green")
+        table.add_column("Chips", style="white")
+        table.add_column("Current Bet", style="blue")
+        table.add_column("Status", style="white")
+        
+        # Calculate positions
+        sb_pos = (self.dealer_pos + 1) % len(self.players)
+        bb_pos = (self.dealer_pos + 2) % len(self.players)
+        
+        for i, player in enumerate(self.players):
+            # Determine position
+            position = ""
+            if i == self.dealer_pos:
+                position = "[bold yellow]D[/bold yellow]"  # Dealer
+            elif i == sb_pos:
+                position = "[bold blue]SB[/bold blue]"    # Small Blind
+            elif i == bb_pos:
+                position = "[bold red]BB[/bold red]"      # Big Blind
+            else:
+                position = "[dim]--[/dim]"               # Regular position
+            
+            status = []
+            if player.folded:
+                status.append("[red]Folded[/red]")
+            if player.all_in:
+                status.append("[magenta]All-in[/magenta]")
+            if not status:
+                status.append("[green]Active[/green]")
+            
+            # Format hole cards - show them if player has cards and hasn't folded
+            if player.hand and not player.folded:
+                hole_cards = " ".join([Card.int_to_str(card) for card in player.hand])
+            elif player.folded:
+                hole_cards = "[dim]Folded[/dim]"
+            else:
+                hole_cards = "[dim]--[/dim]"
+            
+            table.add_row(
+                position,
+                player.name,
+                hole_cards,
+                f"${player.chips}",
+                f"${player.current_bet}",
+                " ".join(status)
+            )
+        
+        console.print(table)
+        console.print()  # Add spacing
+        
+        # 2. HAND-WIDE STATE: Display stage header and community cards
+        console.print(f"[bold cyan]=== {round_name} ===[/bold cyan]")
+        
+        # Display community cards table
+        if self.community_cards:
+            stage = len(self.community_cards)
+            if stage == 3:
+                stage_name = "Flop"
+            elif stage == 4:
+                stage_name = "Turn"
+            elif stage == 5:
+                stage_name = "River"
+            else:
+                stage_name = "Community Cards"
+            
+            community_str = " ".join([Card.int_to_str(card) for card in self.community_cards])
+            community_table = Table(title="Community Cards")
+            community_table.add_column(stage_name, style="green", justify="center")
+            community_table.add_row(community_str)
+        else:
+            community_table = Table(title="Community Cards")
+            community_table.add_column("Pre-flop", style="dim", justify="center")
+            community_table.add_row("[dim]None dealt yet[/dim]")
+        
+        console.print(community_table)
+        
+        # Display pot and current bet
+        console.print(f"Pot: [yellow]${self.pot}[/yellow] | Current bet: [red]${self.current_bet}[/red]")
+        console.print()  # Add spacing before individual player actions
+    
     def display_game_state(self, round_name):
-        console.print(f"[bold]\\n=== {round_name} ===[/bold]")
+        console.print(f"[bold]=== {round_name} ===[/bold]")
         
         # Display community cards in a Rich table
         if self.community_cards:
@@ -278,7 +384,7 @@ class TexasHoldemGame:
             if player.hand and not player.folded:
                 hole_cards = " ".join([Card.int_to_str(card) for card in player.hand])
             elif player.folded:
-                hole_cards = "[dim]Folded[/dim]"
+                hole_cards = "[dim] ".join([Card.int_to_str(card) for card in player.hand]).join(" [/dim]")
             else:
                 hole_cards = "[dim]--[/dim]"
             
@@ -291,8 +397,8 @@ class TexasHoldemGame:
                 " ".join(status)
             )
         
-        console.print(table)
-        time.sleep(1)  # Pause for readability
+        # Remove the existing time.sleep since we're clearing screen
+        # time.sleep(1)  # Pause for readability
     
     def play_hand(self):
         self.start_hand()

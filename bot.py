@@ -25,34 +25,6 @@ class TexasHoldemBot:
         self.all_in = False
 
 # Example Bot Implementation
-class RandomBot(TexasHoldemBot):
-    def decide_action(self, game_state):
-        # Determine if checking is legal (no bet to call)
-        can_check = game_state['current_bet'] == game_state['player_bet']
-        
-        if can_check:
-            # Can check, call, or raise (fold less likely)
-            actions = ['fold', 'check', 'call', 'raise']
-            weights = [0.1, 0.4, 0.3, 0.2]  # Favor checking when possible
-        else:
-            # Must fold, call, or raise (cannot check)
-            actions = ['fold', 'call', 'raise']
-            weights = [0.2, 0.6, 0.2]  # Favor calling over folding/raising
-        
-        action = random.choices(actions, weights=weights)[0]
-        
-        if action == 'raise':
-            min_raise = game_state['current_bet'] + game_state['min_raise']
-            max_raise = min(self.chips + game_state['player_bet'], game_state['current_bet'] * 3)
-            if max_raise >= min_raise:
-                raise_amount = random.randint(min_raise, max_raise)
-                return (action, raise_amount)
-            else:
-                return ('call', 0)
-        
-        return (action, 0)
-
-# Different Bot Strategies
 class AggressiveBot(TexasHoldemBot):
     """Aggressive bot that likes to raise and bluff"""
     def decide_action(self, game_state):
