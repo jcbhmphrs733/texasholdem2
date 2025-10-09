@@ -24,6 +24,20 @@ class TexasHoldemGame:
         # Clear screen for new hand
         os.system('cls' if os.name == 'nt' else 'clear')
         
+        # Remove bankrupt players at the start of the hand
+        bankrupt_players = [player for player in self.players if player.chips <= 0]
+        for player in bankrupt_players:
+            print(f"{player.name} has been eliminated with ${player.chips} chips!")
+            self.players.remove(player)
+            input(f"Press Enter to continue after {player.name}'s elimination...")
+        
+        if len(self.players) <= 1:
+            return False  # Game over
+        
+        # Adjust dealer position if needed after eliminations
+        if self.dealer_pos >= len(self.players):
+            self.dealer_pos = 0
+        
         # Reset game state
         self.deck = Deck()
         self.community_cards = []
@@ -38,13 +52,18 @@ class TexasHoldemGame:
         sb_pos = (self.dealer_pos + 1) % len(self.players)
         bb_pos = (self.dealer_pos + 2) % len(self.players)
         
-        self.players[sb_pos].chips -= self.small_blind
-        self.players[sb_pos].current_bet = self.small_blind
-        self.players[bb_pos].chips -= self.big_blind
-        self.players[bb_pos].current_bet = self.big_blind
+        # Small blind
+        sb_amount = min(self.small_blind, self.players[sb_pos].chips)
+        self.players[sb_pos].chips -= sb_amount
+        self.players[sb_pos].current_bet = sb_amount
         
-        self.pot = self.small_blind + self.big_blind
-        self.current_bet = self.big_blind
+        # Big blind
+        bb_amount = min(self.big_blind, self.players[bb_pos].chips)
+        self.players[bb_pos].chips -= bb_amount
+        self.players[bb_pos].current_bet = bb_amount
+        
+        self.pot = sb_amount + bb_amount
+        self.current_bet = max(sb_amount, bb_amount)
         
         # Deal cards
         for player in self.players:
@@ -53,6 +72,7 @@ class TexasHoldemGame:
             player.receive_cards([card1, card2])
         
         self.display_persistent_game_state("Pre-flop")
+        return True  # Hand started successfully
     
     def betting_round(self, round_name):
         console.rule(f"[bold green]--- {round_name} Betting Round ---[/bold green]")
@@ -401,8 +421,6 @@ class TexasHoldemGame:
         # time.sleep(1)  # Pause for readability
     
     def play_hand(self):
-        self.start_hand()
-        
         # Pre-flop betting
         self.betting_round("Pre-flop")
         
@@ -436,9 +454,28 @@ class TexasHoldemGame:
         # Showdown
         if len([p for p in self.players if not p.folded]) > 0:
             self.showdown()
+            
+            # Remove bankrupt players immediately after showdown
+            bankrupt_players = [p for p in self.players if p.chips <= 0]
+            for player in bankrupt_players:
+                console.print(f"[bold red]{player.name} is eliminated with $0 chips![/bold red]")
+            
+            # Remove bankrupt players from the game
+            remaining_players = [p for p in self.players if p.chips > 0]
+            
+            # Adjust dealer position if players were eliminated
+            if len(remaining_players) < len(self.players):
+                # Count eliminated players before current dealer
+                eliminated_before_dealer = 0
+                for i, player in enumerate(self.players):
+                    if i < self.dealer_pos and player.chips <= 0:
+                        eliminated_before_dealer += 1
+                
+                # Update dealer position accounting for eliminated players
+                self.dealer_pos = (self.dealer_pos - eliminated_before_dealer) % len(remaining_players)
+                
+            self.players = remaining_players
         
-        # Rotate dealer button
-        self.dealer_pos = (self.dealer_pos + 1) % len(self.players)
-        
-        # Remove bankrupt players
-        self.players = [p for p in self.players if p.chips > 0]
+        # Rotate dealer button (only if there are still players)
+        if len(self.players) > 1:
+            self.dealer_pos = (self.dealer_pos + 1) % len(self.players)
