@@ -7,8 +7,8 @@ class PassiveBot(ParentBot):
     This will help us test that all betting rounds work properly.
     """
 
-    def __init__(self, name: str = "TestPassive", chips: int = 1000):
-        super().__init__(name, chips)
+    def __init__(self, name: str = "TestPassive"):
+        super().__init__(name)
         
     def decide_action(self, game_state: Dict[str, Any]) -> Tuple[str, int]:
         """

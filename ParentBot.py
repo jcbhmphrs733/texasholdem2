@@ -17,16 +17,15 @@ class ParentBot(ABC):
                 return ('call', 0)  # action and amount
     """
     
-    def __init__(self, name: str, chips: int = 1000):
+    def __init__(self, name: str):
         """
-        Initialize the bot with a name and starting chip count.
+        Initialize the bot with a name. Chips are managed by the tournament system.
         
         Args:
             name (str): The name of your bot (will be displayed in the game)
-            chips (int): Starting chip count (default: 1000)
         """
         self.name = name
-        self.chips = chips
+        self.chips = 0  # Will be set by tournament system
         self.hand = []  # Your two hole cards (will be set by the game)
         self.current_bet = 0  # Your current bet in this round
         self.folded = False  # Whether you've folded this hand

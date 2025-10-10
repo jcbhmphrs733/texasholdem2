@@ -86,7 +86,7 @@ def validate_bot_class(bot_class: Type[ParentBot], filename: str) -> Dict[str, A
         
         # Try to instantiate the bot
         try:
-            test_bot = bot_class("ValidationTest", chips=500)
+            test_bot = bot_class("ValidationTest")
         except Exception as e:
             return {"valid": False, "error": f"Constructor failed: {e}"}
         
@@ -127,7 +127,7 @@ def validate_bot_class(bot_class: Type[ParentBot], filename: str) -> Dict[str, A
         # Check for abstract method implementation
         try:
             # This will raise TypeError if abstract methods are not implemented
-            test_instance = bot_class("AbstractTest", chips=500)
+            test_instance = bot_class("AbstractTest")
             # If we get here, all abstract methods are implemented
         except TypeError as e:
             if "abstract" in str(e).lower():
@@ -153,9 +153,11 @@ def get_all_bots(starting_chips: int = 500) -> List[ParentBot]:
     
     for bot_class in bot_classes:
         try:
-            # Create bot instance with default name (class name)
+            # Create bot instance 
             bot_name = bot_class.__name__
-            bot = bot_class(bot_name, chips=starting_chips)
+            bot = bot_class(bot_name)
+            # Set chips for tournament
+            bot.chips = starting_chips
             bots.append(bot)
             
         except Exception as e:

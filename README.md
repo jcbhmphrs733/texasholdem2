@@ -6,7 +6,7 @@ Welcome to the Texas Hold'em Bot Hackathon! Create your own poker bot to compete
 
 1. **Create your bot file**: Add a `.py` file to the `player_pool/` directory
 2. **Implement your bot**: Create a class that inherits from `ParentBot`
-3. **Test your bot**: Run `python main_tournament.py` to test in the tournament
+3. **Test your bot**: Use the Dojo in `botDev/` or run `python main_tournament.py`
 4. **Your bot is automatically included**: The system discovers and includes all valid bots!
 
 ## Player Pool System
@@ -23,6 +23,9 @@ The tournament uses an **automatic bot discovery system**. Simply:
    from ParentBot import ParentBot
    
    class MyAwesomeBot(ParentBot):
+       def __init__(self, name="MyAwesomeBot"):
+           super().__init__(name)
+           
        def decide_action(self, game_state):
            # Your strategy here
            return ('call', game_state['current_bet'])
@@ -43,6 +46,9 @@ Your bot must inherit from `ParentBot` and implement the `decide_action` method:
 from ParentBot import ParentBot
 
 class YourBot(ParentBot):
+    def __init__(self, name="YourBot"):
+        super().__init__(name)
+        
     def decide_action(self, game_state):
         # Your strategy here
         return ('call', game_state['current_bet'])  # Example
@@ -50,13 +56,28 @@ class YourBot(ParentBot):
 
 ## Game State Information
 
-The `game_state` dictionary contains:
+The `game_state` dictionary contains all the information you need:
+
+### Basic Game Info
 - `current_bet`: Highest bet this round
-- `min_raise`: Minimum raise amount
-- `max_raise`: Maximum you can bet
+- `min_raise`: Minimum raise amount  
 - `pot`: Total chips in pot
 - `community_cards`: Board cards (empty pre-flop)
 - `player_bet`: Your current bet this round
+- `small_blind`: Current small blind amount
+- `big_blind`: Current big blind amount
+
+### Enhanced Opponent Information
+- `players`: List of all players with their current status
+- `opponent_chips`: Dictionary of opponent chip counts
+- `opponent_positions`: Dictionary of opponent positions
+- `action_history`: Recent actions taken by all players this hand
+- `betting_patterns`: Track opponent betting tendencies
+
+Your bot also receives callbacks for advanced strategy:
+- `on_player_action(player_name, action, amount)`: When any player acts
+- `on_community_cards_dealt(cards, stage)`: When flop/turn/river dealt
+- `on_hand_complete(winner, pot_size, winning_hand)`: When hand ends
 
 ## Valid Actions
 
@@ -70,37 +91,47 @@ Return a tuple `(action, amount)`:
 
 Your bot has access to:
 - `self.name`: Your bot's name
-- `self.chips`: Current chip count
+- `self.chips`: Current chip count (managed automatically by tournament)
 - `self.hand`: Your two hole cards
 - `self.current_bet`: Your bet this round
 - `self.folded`: Whether you've folded
 - `self.all_in`: Whether you're all-in
 
+**Note**: You don't need to manage chips in your constructor - the tournament system handles starting chips and updates automatically!
+
 ## Example Strategies
 
 ### Conservative Bot
 ```python
-def decide_action(self, game_state):
-    hand_strength = self.get_hand_strength()
-    can_check = game_state['current_bet'] == game_state['player_bet']
-    
-    if hand_strength < 0.7:  # Only play strong hands
-        return ('check', 0) if can_check else ('fold', 0)
-    else:
-        min_raise = game_state['current_bet'] + game_state['min_raise']
-        return ('raise', min_raise) if min_raise <= self.chips else ('call', game_state['current_bet'])
+class ConservativeBot(ParentBot):
+    def __init__(self, name="Conservative"):
+        super().__init__(name)
+        
+    def decide_action(self, game_state):
+        hand_strength = self.get_hand_strength()
+        can_check = game_state['current_bet'] == game_state['player_bet']
+        
+        if hand_strength < 0.7:  # Only play strong hands
+            return ('check', 0) if can_check else ('fold', 0)
+        else:
+            min_raise = game_state['current_bet'] + game_state['min_raise']
+            return ('raise', min_raise) if min_raise <= self.chips else ('call', game_state['current_bet'])
 ```
 
 ### Aggressive Bot
 ```python
-def decide_action(self, game_state):
-    if random.random() < 0.6:  # 60% chance to raise
-        min_raise = game_state['current_bet'] + game_state['min_raise']
-        if min_raise <= self.chips + game_state['player_bet']:
-            return ('raise', min_raise)
-    
-    can_check = game_state['current_bet'] == game_state['player_bet']
-    return ('check', 0) if can_check else ('call', game_state['current_bet'])
+class AggressiveBot(ParentBot):
+    def __init__(self, name="Aggressive"):
+        super().__init__(name)
+        
+    def decide_action(self, game_state):
+        if random.random() < 0.6:  # 60% chance to raise
+            min_raise = game_state['current_bet'] + game_state['min_raise']
+            if min_raise <= self.chips + game_state['player_bet']:
+                return ('raise', min_raise)
+        
+        can_check = game_state['current_bet'] == game_state['player_bet']
+        return ('check', 0) if can_check else ('call', game_state['current_bet'])
 ```
 
 ## Advanced Bot Features
@@ -137,9 +168,9 @@ The `ParentBot` class provides useful helpers:
 
 ## Card Utilities
 
-Use the `treys` library for card analysis:
+Use the `treys` library for card utilities:
 ```python
-from treys import Card, Evaluator
+from treys import Card
 
 # Get card rank/suit
 rank = Card.get_rank_int(card)  # 2-14 (2=2, 14=Ace)
@@ -148,9 +179,8 @@ suit = Card.get_suit_int(card)  # 1-4
 # Convert to string
 card_str = Card.int_to_str(card)  # e.g., "As" for Ace of Spades
 
-# Evaluate hand strength with community cards
-evaluator = Evaluator()
-strength = evaluator.evaluate(self.hand, game_state['community_cards'])
+# Implement your own hand evaluation logic using community cards!
+# Your creativity in hand evaluation will determine your bot's success
 ```
 
 ## Testing Your Bot
@@ -196,12 +226,17 @@ No manual registration required!
    ```
 
 3. **Copy the basic template**:
+   ```bash
+   cp botDev/template.py player_pool/my_strategy_bot.py
+   ```
+   
+   Then edit `player_pool/my_strategy_bot.py`:
    ```python
    from ParentBot import ParentBot
    
    class MyStrategyBot(ParentBot):
-       def __init__(self, name="MyStrategy", chips=1000):
-           super().__init__(name, chips)
+       def __init__(self, name="MyStrategy"):
+           super().__init__(name)
        
        def decide_action(self, game_state):
            # Your poker strategy here
@@ -214,6 +249,12 @@ No manual registration required!
 
 4. **Test your bot**:
    ```bash
+   # Test against scenarios
+   cd botDev
+   python dojo.py MyStrategyBot
+   
+   # Or run full tournament
+   cd ..
    python main_tournament.py
    ```
 
@@ -221,44 +262,86 @@ No manual registration required!
 
 ## Tips for Success
 
-1. **Start simple**: Get a basic bot working first
-2. **Hand evaluation**: Strong hand evaluation is crucial
-5. **Bankroll management**: Don't go all-in too often
-7. **Pot odds**: Calculate if calls are profitable
+1. **Start simple**: Copy `botDev/template.py` to get a working bot first
+2. **Study Coyote**: The 94-line reference bot shows clean hand evaluation and position play
+3. **Use the Dojo**: Test your bot with `cd botDev && python dojo.py YourBot`
+4. **Hand evaluation**: Strong hand evaluation is crucial for good play
+5. **Position awareness**: Use the `opponent_positions` data for better decisions
+6. **Opponent modeling**: Track betting patterns with `action_history`
+7. **Bankroll management**: Don't go all-in too often
+
+## Enhanced Features (New!)
+
+This tournament system includes advanced features for sophisticated bots:
+
+- **Opponent Analysis**: Track chip counts, positions, and betting patterns
+- **Action History**: See what actions players took this hand
+- **Callback System**: React to community cards and hand completions  
+- **Real-time Updates**: Get notified when opponents act
+- **Professional UI**: Rich tournament display with detailed statistics
+- **Bot Testing**: Dedicated dojo for scenario-based testing
 
 ## File Structure
 
 ```
 texasholdem/
-├── main_tournament.py       # Tournament runner (run this!)
-├── ParentBot.py             # Abstract base class (don't modify)
-├── template.py              # Reference template for bot structure (copy into player_pool)
-├── game.py                  # Game engine (don't modify)
-├── player_pool/             # PUT YOUR BOT HERE!
-│   ├── __init__.py          # Auto-discovery system
-│   ├── Coyote.py            # Example: conservative bot
-│   └── YOUR_BOT_HERE.py     # Your bot file goes here!
-└── README.md                # This file
+├── main_tournament.py          # Tournament runner (run this!)
+├── ParentBot.py                # Abstract base class (don't modify)
+├── game_logic.py               # Game engine (don't modify)
+├── player_pool/     <------    # PUT YOUR BOT HERE!
+│   ├── __init__.py             # Auto-discovery system
+│   ├── Coyote.py               # Example: lean balanced bot
+│   └── YOUR_BOT_HERE.py        # Your bot file goes here!
+├── botDev/                     # Bot development tools
+│   ├── dojo.py                 # Test your bot
+│   ├── template.py             # Copy this to start your bot
+│   └── DOJO_README.md          # Dojo documentation
+├── Setup/                      # Tournament configuration (advanced)
+│   ├── tournament_ui.py        # UI components
+│   ├── tournament_stats.py     # Statistics tracking
+│   └── configure_tournament.py # Tournament settings
+├── versionControl/             # Repository management
+│   ├── SECURITY.md             # Security guidelines
+│   └── validate_tournament.py  # Tournament validation
+└── README.md                   # This file
 ```
 
 ## Current Example Bot
 
-The `player_pool/` directory already contains an example bot you can study:
+The `player_pool/` directory contains a reference implementation:
 
-- **Coyote**: Conservative tight play, only premium hands
+- **Coyote**: Lean, balanced bot demonstrating hand evaluation, position play, and betting logic. Perfect reference for beginners!
+
+## Bot Development Tools
+
+### Testing Dojo (`botDev/dojo.py`)
+Test your bot against 10 challenging scenarios:
+```bash
+cd botDev
+python dojo.py YourBotName
+```
+
+### Bot Template (`botDev/template.py`)
+Copy this template to create your own bot:
+```bash
+cp botDev/template.py player_pool/my_awesome_bot.py
+```
 
 ## Tournament Development Features
 
 - **Automatic Bot Discovery**: Just add your `.py` file to `player_pool/`
-- **Version Testing**: You can have multiple bot versions compete in the pool
+- **Enhanced Game State**: Access opponent information and betting history
+- **Bot Testing Dojo**: Test against 10 challenging scenarios in `botDev/`
+- **Template System**: Copy `botDev/template.py` to quick-start your bot
+- **Version Testing**: You can have multiple bot versions compete
 - **Real-time Tournament**: Watch bots compete with detailed game display
+- **Comprehensive Analysis**: Detailed post-tournament statistics and performance metrics
 - **Professional Presentation**: Rich console output with tables and colors
 - **Error Handling**: Clear error messages if your bot has issues
+- **Organized Structure**: Clean separation of bots, tools, and configuration
 - **Scalable**: Supports unlimited number of participants
 
-## Submission Process
-
-**No manual submission required!** The tournament system automatically:
+## Running the tournament
 
 1. **Scans** the `player_pool/` directory for `.py` files
 2. **Discovers** all classes that inherit from `ParentBot`

@@ -264,8 +264,16 @@ class BotTester:
         if not bot_class:
             return
         
-        # Create bot instance
-        bot_instance = bot_class(bot_name, 1000)
+        # Create bot instance (try different constructor patterns)
+        try:
+            bot_instance = bot_class(bot_name)
+        except TypeError:
+            # Fallback for bots that still expect chips parameter
+            try:
+                bot_instance = bot_class(bot_name, 1000)
+            except TypeError:
+                # Last resort - default constructor
+                bot_instance = bot_class()
         
         # Run all scenarios
         results = []

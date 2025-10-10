@@ -6,24 +6,32 @@
 ```
 player_pool/
 ├── YourBot.py          ← Create your bot here
-├── template.py         ← Use this as a starting point
 └── existing_bots.py    ← Study these for inspiration
 
-dojo.py              ← Customize testing scenarios
-README.md            ← Documentation
-DOJO_README.md       ← Testing guide
+botDev/
+├── dojo.py             ← Test your bot against scenarios
+├── template.py         ← Copy this to start your bot
+└── DOJO_README.md      ← Testing guide
+
+README.md               ← Main documentation
 ```
 
 ### **DO NOT MODIFY** (Core Infrastructure):
 ```
-game_logic.py         ← Poker rules and game mechanics
-ParentBot.py          ← Base bot interface (READ ONLY)
-main_tournament.py    ← Tournament runner
-tournament_ui.py      ← Display system
-tournament_stats.py   ← Statistics tracking
-tournament_analysis.py ← Post-game analysis
-configure_tournament.py ← Tournament settings
-get_participants.py   ← Bot discovery system
+game_logic.py           ← Poker rules and game mechanics
+ParentBot.py            ← Base bot interface (READ ONLY)
+main_tournament.py      ← Tournament runner
+
+Setup/                  ← Tournament system components
+├── tournament_ui.py    ← Display system
+├── tournament_stats.py ← Statistics tracking
+├── tournament_analysis.py ← Post-game analysis
+└── configure_tournament.py ← Tournament settings
+
+versionControl/         ← Repository management
+├── SECURITY.md         ← This file
+├── validate_tournament.py ← System validation
+└── secure_repo.py      ← Security tools
 ```
 
 ### **READ FOR LEARNING** (Study These):
@@ -46,6 +54,6 @@ get_participants.py   ← Bot discovery system
 ### **Recommended Workflow**:
 1. **Read** `ParentBot.py` to understand the interface
 2. **Study** `game_logic.py` to understand poker rules
-3. **Copy** `template.py` to create `YourBot.py`
+3. **Copy** `botDev/template.py` to create `player_pool/YourBot.py`
 4. **Test** with `dojo.py` to validate your strategy
 5. **Submit** only your bot file in `player_pool/`

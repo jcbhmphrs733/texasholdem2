@@ -1,27 +1,40 @@
-# Bot Testing Dojo - Simple Bot Validation Tool
+# Bot Testing Dojo - Enhanced Bot Validation Tool
 
-A lightweight testing tool for validating poker bot behavior against expected outcomes in common scenarios.
+A lightweight testing tool for validating poker bot behavior against expected outcomes in common scenarios. Tests your bot's decision-making using the enhanced game state with opponent information.
 
 ## Overview
 
-The Dojo provides a simple command-line interface to test your bot's decision-making in predefined poker scenarios. It helps ensure your bot makes reasonable decisions and can identify areas that need improvement.
+The Dojo provides a simple command-line interface to test your bot's decision-making in predefined poker scenarios. It simulates the same enhanced game state your bot will receive in tournaments, including opponent information and action history.
 
 ## Quick Start
 
-1. **Ensure your bot is in the `player_pool` directory**
+1. **Navigate to the botDev directory**
+   ```bash
+   cd botDev
    ```
-   player_pool/
+
+2. **Ensure your bot is in the `player_pool` directory**
+   ```
+   ../player_pool/
    ├── YourBot.py
    ├── Coyote.py
    └── ...
    ```
 
-2. **Run the Dojo with your bot name**
+3. **Run the Dojo with your bot name**
    ```bash
    python dojo.py YourBot
    ```
 
-3. **Review the test results** to see how your bot performs
+4. **Review the test results** to see how your bot performs
+
+## What Gets Tested
+
+The Dojo tests your bot using the **same enhanced game state** as the tournament:
+- **Enhanced opponent information**: opponent_chips, opponent_positions, action_history
+- **Callback methods**: Your bot's `on_player_action`, `on_community_cards_dealt`, etc.
+- **Realistic scenarios**: Each test includes proper game state context
+- **Hand strength validation**: Tests if your `get_hand_strength()` method works correctly
 
 ## Test Scenarios
 
