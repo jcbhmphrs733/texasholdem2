@@ -115,13 +115,6 @@ def get_hand_strength(self):
     pass
 ```
 
-### Opponent Tracking
-```python
-def on_player_action(self, player_name, action, amount):
-    # Track opponent betting patterns
-    pass
-```
-
 ### Performance Tracking
 ```python
 def on_hand_complete(self, winner, pot_size, winning_hand=None):
@@ -177,7 +170,7 @@ Found 2 participant bot(s) ready for tournament!
 
 Tournament Participants (2 bots):
   1. MyAwesomeBot (MyAwesomeBot)
-  2. AliceBot (AliceBot)
+  2. Coyote (Coyote)
 ```
 
 No manual registration required!
@@ -230,42 +223,34 @@ No manual registration required!
 
 1. **Start simple**: Get a basic bot working first
 2. **Hand evaluation**: Strong hand evaluation is crucial
-3. **Position awareness**: Consider betting position
-4. **Opponent modeling**: Track opponent patterns
 5. **Bankroll management**: Don't go all-in too often
-6. **Bluffing**: Sometimes bet with weak hands
 7. **Pot odds**: Calculate if calls are profitable
 
 ## File Structure
 
 ```
 texasholdem/
-├── main_tournament.py        # Tournament runner (run this!)
+├── main_tournament.py       # Tournament runner (run this!)
 ├── ParentBot.py             # Abstract base class (don't modify)
-├── template.py              # Reference template for bot structure
+├── template.py              # Reference template for bot structure (copy into player_pool)
 ├── game.py                  # Game engine (don't modify)
 ├── player_pool/             # PUT YOUR BOT HERE!
-│   ├── __init__.py         # Auto-discovery system
-│   ├── alice_bot.py        # Example: Strategic bot
-│   ├── bob_aggressive_bot.py # Example: Aggressive bot
-│   ├── charlies_math_bot.py # Example: Mathematical bot
-│   └── YOUR_BOT_HERE.py    # Your bot file goes here!
-└── README.md               # This file
+│   ├── __init__.py          # Auto-discovery system
+│   ├── Coyote.py            # Example: conservative bot
+│   └── YOUR_BOT_HERE.py     # Your bot file goes here!
+└── README.md                # This file
 ```
 
-## Current Example Bots
+## Current Example Bot
 
-The `player_pool/` directory contains several example bots you can study:
+The `player_pool/` directory already contains an example bot you can study:
 
-- **AliceBot**: Balanced strategic play with position awareness
-- **BobAggressiveBot**: High aggression, frequent raises and bluffs
-- **CharliesMathBot**: Mathematical approach using pot odds and equity
 - **Coyote**: Conservative tight play, only premium hands
 
-## Tournament System Features
+## Tournament Development Features
 
 - **Automatic Bot Discovery**: Just add your `.py` file to `player_pool/`
-- **Multiple Bots per Participant**: You can submit multiple bot strategies
+- **Version Testing**: You can have multiple bot versions compete in the pool
 - **Real-time Tournament**: Watch bots compete with detailed game display
 - **Professional Presentation**: Rich console output with tables and colors
 - **Error Handling**: Clear error messages if your bot has issues
