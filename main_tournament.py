@@ -2,6 +2,8 @@
 from rich.console import Console
 from game_logic import TexasHoldemGame
 from tournament_ui import TournamentUI
+from tournament_stats import TournamentStats
+from tournament_analysis import TournamentAnalyzer
 
 # Import participant bots from player pool
 from player_pool import get_all_bots, get_bot_summary
@@ -16,14 +18,16 @@ from typing import Dict, Any, Tuple
 
 console = Console()
 
-def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str):
+def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str, 
+                     stats: TournamentStats):
     """
-    Run a complete betting round with UI coordination.
+    Run a complete betting round with UI coordination and statistics tracking.
     
     Args:
         game: The game logic instance
         ui: The UI instance
         round_name: Name of the betting round ('Pre-flop', 'Flop', etc.)
+        stats: Statistics tracker
     """
     ui.display_betting_round_header(round_name)
     
@@ -33,7 +37,8 @@ def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str):
         game_state = game.get_game_state()
         ui.display_persistent_game_state(
             game_state['players'], round_name, game_state['community_cards'],
-            game_state['pot'], game_state['current_bet'], game_state['dealer_pos']
+            game_state['pot'], game_state['current_bet'], game_state['dealer_pos'],
+            game_state['side_pots'], game_state['main_pot']
         )
     
     # Get betting order
@@ -68,7 +73,8 @@ def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str):
             game_state = game.get_game_state()
             ui.display_persistent_game_state(
                 game_state['players'], round_name, game_state['community_cards'],
-                game_state['pot'], game_state['current_bet'], game_state['dealer_pos']
+                game_state['pot'], game_state['current_bet'], game_state['dealer_pos'],
+                game_state['side_pots'], game_state['main_pot']
             )
             
             # Show player's turn info
@@ -97,6 +103,10 @@ def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str):
             
             # Execute the action
             result = game.execute_action(player, action, amount)
+            
+            # Track statistics
+            stats.record_action(result['player_name'], result['display_action'], 
+                              result['display_amount'], round_name)
             
             # Display result
             ui.display_player_action_result(
@@ -128,13 +138,14 @@ def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str):
         if all(pos in players_acted for pos in eligible_players):
             break
 
-def run_showdown(game: TexasHoldemGame, ui: TournamentUI):
+def run_showdown(game: TexasHoldemGame, ui: TournamentUI, stats: TournamentStats):
     """
-    Run the showdown phase with UI coordination.
+    Run the showdown phase with UI coordination and statistics tracking.
     
     Args:
         game: The game logic instance
         ui: The UI instance
+        stats: Statistics tracker
     """
     ui.display_showdown_header()
     
@@ -143,26 +154,50 @@ def run_showdown(game: TexasHoldemGame, ui: TournamentUI):
     if len(active_players) == 1:
         # Single winner (everyone else folded)
         winner = active_players[0]
-        prize = game.distribute_pot([winner])
-        ui.display_hand_winner(winner.name, prize, "Unopposed")
+        total_pot = game.pot
+        winner.chips += total_pot
+        ui.display_hand_winner(winner.name, total_pot, "Unopposed")
+        stats.record_hand_winner(winner.name, total_pot)
         return
     
-    # Evaluate hands
+    # Evaluate hands for all active players
     scores = game.evaluate_hands()
     ui.display_showdown_results(active_players, scores, game.evaluator)
     
-    # Determine winners and distribute pot
-    winners = game.determine_winners(scores)
-    prize = game.distribute_pot(winners)
+    # Record showdown statistics
+    stats.record_showdown(scores, game.community_cards)
     
-    # Display winners
-    for winner in winners:
-        hand_description = game.get_winner_hand_description(winner, scores)
-        ui.display_hand_winner(winner.name, prize, hand_description)
+    # Handle side pot distribution
+    side_pot_results = game.get_side_pot_winners(scores)
+    
+    # Distribute winnings and display results
+    for pot_result in side_pot_results:
+        pot_type = pot_result['pot_type']
+        winners = pot_result['winners'] 
+        prize_per_winner = pot_result['prize_per_winner']
+        
+        # Award chips to winners
+        for winner in winners:
+            winner.chips += prize_per_winner
+        
+        # Display pot result
+        if len(winners) == 1:
+            winner = winners[0]
+            hand_description = game.get_winner_hand_description(winner, scores)
+            ui.display_side_pot_winner(pot_type, winner.name, prize_per_winner, hand_description)
+            stats.record_hand_winner(winner.name, prize_per_winner)
+        else:
+            # Multiple winners split the pot
+            winner_names = [w.name for w in winners]
+            ui.display_side_pot_split(pot_type, winner_names, prize_per_winner)
+            for winner in winners:
+                stats.record_hand_winner(winner.name, prize_per_winner)
 
 def main():
-    # Initialize UI
+    # Initialize UI, statistics, and analyzer
     ui = TournamentUI()
+    stats = TournamentStats()
+    analyzer = TournamentAnalyzer(console)
     
     # Display welcome and tournament configuration
     ui.display_welcome()
@@ -200,6 +235,9 @@ def main():
     # Create tournament game
     game = TexasHoldemGame(players, small_blind=initial_small_blind, big_blind=initial_big_blind)
     
+    # Initialize tournament statistics
+    stats.remaining_players = len(players)
+    
     hand_number = 1
     
     try:
@@ -217,42 +255,67 @@ def main():
             if not game.start_hand():
                 break
             
+            # Initialize hand statistics
+            stats.start_hand(game.players)
+            
             # Clear screen and show initial game state
             ui.clear_screen()
             game_state = game.get_game_state()
             ui.display_persistent_game_state(
                 game_state['players'], "Pre-flop", game_state['community_cards'],
-                game_state['pot'], game_state['current_bet'], game_state['dealer_pos']
+                game_state['pot'], game_state['current_bet'], game_state['dealer_pos'],
+                game_state['side_pots'], game_state['main_pot']
             )
             
             # Pre-flop betting
-            run_betting_round(game, ui, "Pre-flop")
+            run_betting_round(game, ui, "Pre-flop", stats)
+            
+            # Track players who saw each round
+            for player in game.get_active_players():
+                stats.record_round_progression(player.name, "Pre-flop")
             
             # Flop
             if len(game.get_active_players()) > 1:
                 game.deal_community_cards(3)
                 game.reset_bets_for_new_round()
-                run_betting_round(game, ui, "Flop")
+                
+                # Track flop progression
+                for player in game.get_active_players():
+                    stats.record_round_progression(player.name, "Flop")
+                
+                run_betting_round(game, ui, "Flop", stats)
             
             # Turn
             if len(game.get_active_players()) > 1:
                 game.deal_community_cards(1)
                 game.reset_bets_for_new_round()
-                run_betting_round(game, ui, "Turn")
+                
+                # Track turn progression
+                for player in game.get_active_players():
+                    stats.record_round_progression(player.name, "Turn")
+                
+                run_betting_round(game, ui, "Turn", stats)
             
             # River
             if len(game.get_active_players()) > 1:
                 game.deal_community_cards(1)
                 game.reset_bets_for_new_round()
-                run_betting_round(game, ui, "River")
+                
+                # Track river progression
+                for player in game.get_active_players():
+                    stats.record_round_progression(player.name, "River")
+                
+                run_betting_round(game, ui, "River", stats)
             
             # Showdown
             if len(game.get_active_players()) > 0:
-                run_showdown(game, ui)
+                run_showdown(game, ui, stats)
             
-            # Remove bankrupt players and check for eliminations
+            # Complete hand statistics
+            stats.complete_hand()            # Remove bankrupt players and check for eliminations
             eliminated = game.remove_bankrupt_players()
             for eliminated_player in eliminated:
+                stats.record_player_elimination(eliminated_player.name)
                 ui.display_elimination(eliminated_player.name, eliminated_player.chips)
                 ui.prompt_elimination_continue(eliminated_player.name)
             
@@ -276,8 +339,14 @@ def main():
                 
     except KeyboardInterrupt:
         ui.display_tournament_interrupted()
-        
-    # Show final standings
+    
+    # Finalize tournament statistics
+    stats.finalize_tournament(game.players)
+    
+    # Display comprehensive analysis (no podium - final results are at the end)
+    analyzer.display_comprehensive_analysis(stats, game.players)
+    
+    # Show final standings (simplified version after detailed analysis)
     ui.display_final_standings(game.players)
     ui.display_thanks()
 

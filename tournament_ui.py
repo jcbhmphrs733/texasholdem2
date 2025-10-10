@@ -148,7 +148,9 @@ class TournamentUI:
     
     def display_persistent_game_state(self, players: List[Any], round_name: str, 
                                     community_cards: List[int], pot: int, 
-                                    current_bet: int, dealer_pos: int):
+                                    current_bet: int, dealer_pos: int, 
+                                    side_pots: List[Dict[str, Any]] = None,
+                                    main_pot: int = 0):
         """Display the persistent game state that stays at the top of the screen."""
         
         # 1. GAME-WIDE STATE: Display all players table first (most persistent)
@@ -230,8 +232,34 @@ class TournamentUI:
         
         self.console.print(community_table)
         
-        # Display pot and current bet
-        self.console.print(f"Pot: [yellow]${pot}[/yellow] | Current bet: [red]${current_bet}[/red]")
+        # Display pot information with side pots
+        if side_pots and len(side_pots) > 0:
+            # Multiple pots - show detailed breakdown
+            pot_table = Table(title="Pot Information")
+            pot_table.add_column("Pot Type", style="cyan")
+            pot_table.add_column("Amount", style="yellow")
+            pot_table.add_column("Eligible Players", style="white")
+            
+            # Main pot
+            if main_pot > 0:
+                all_active = [p.name for p in players if not p.folded]
+                pot_table.add_row("Main Pot", f"${main_pot}", ", ".join(all_active))
+            
+            # Side pots
+            for i, side_pot in enumerate(side_pots):
+                eligible_names = [p.name for p in side_pot['eligible_players']]
+                pot_table.add_row(
+                    f"Side Pot {i + 1}", 
+                    f"${side_pot['amount']}", 
+                    ", ".join(eligible_names)
+                )
+            
+            self.console.print(pot_table)
+            self.console.print(f"Total Pot: [yellow]${pot}[/yellow] | Current bet: [red]${current_bet}[/red]")
+        else:
+            # Single pot - simple display
+            self.console.print(f"Pot: [yellow]${pot}[/yellow] | Current bet: [red]${current_bet}[/red]")
+        
         self.console.print()  # Add spacing before individual player actions
     
     def display_betting_round_header(self, round_name: str):
@@ -310,6 +338,15 @@ class TournamentUI:
     def display_hand_winner(self, winner_name: str, prize: int, hand_class: str):
         """Display hand winner announcement."""
         self.console.print(f"[bold yellow]{winner_name} wins {prize} chips with {hand_class}[/bold yellow]")
+    
+    def display_side_pot_winner(self, pot_type: str, winner_name: str, prize: int, hand_class: str):
+        """Display side pot winner announcement."""
+        self.console.print(f"[bold cyan]{pot_type}:[/bold cyan] [bold yellow]{winner_name} wins {prize} chips with {hand_class}[/bold yellow]")
+    
+    def display_side_pot_split(self, pot_type: str, winner_names: List[str], prize_per_winner: int):
+        """Display side pot split among multiple winners."""
+        winners_str = " and ".join(winner_names)
+        self.console.print(f"[bold cyan]{pot_type}:[/bold cyan] [bold yellow]{winners_str} split {prize_per_winner} chips each[/bold yellow]")
     
     def display_community_cards_header(self, round_name: str):
         """Display community cards dealing header."""

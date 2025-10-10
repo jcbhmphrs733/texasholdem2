@@ -14,7 +14,7 @@ Modify these settings to customize your tournament format:
 # =============================================================================
 
 # Starting chip count for each bot
-STARTING_CHIPS = 500
+STARTING_CHIPS = 200
 
 # Minimum and maximum number of players allowed in tournament
 MIN_PLAYERS = 2
@@ -25,8 +25,8 @@ MAX_PLAYERS = 10
 # =============================================================================
 
 # Initial blind amounts
-SMALL_BLIND_INITIAL = 5
-BIG_BLIND_INITIAL = 10
+SMALL_BLIND_INITIAL = 15
+BIG_BLIND_INITIAL = 30
 
 # Blind increase settings
 BLIND_INCREASE_FACTOR = 1.5  # Multiply blinds by this factor when increasing

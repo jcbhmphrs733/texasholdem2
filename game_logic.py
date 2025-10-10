@@ -54,6 +54,10 @@ class TexasHoldemGame:
         self.evaluator = Evaluator()
         self.hand_history = []
         
+        # Side pot management
+        self.side_pots = []  # List of (amount, eligible_players) tuples
+        self.main_pot = 0
+        
         # Game state for external access (UI, statistics, etc.)
         self.last_action = None
         self.betting_round_complete = False
@@ -74,13 +78,82 @@ class TexasHoldemGame:
         return {
             'players': self.players,
             'community_cards': self.community_cards,
-            'pot': self.pot,
+            'pot': self.main_pot + sum(pot['amount'] for pot in self.side_pots),  # Total pot for display
             'current_bet': self.current_bet,
             'dealer_pos': self.dealer_pos,
             'small_blind': self.small_blind,
             'big_blind': self.big_blind,
             'hand_complete': self.hand_complete,
-            'betting_round_complete': self.betting_round_complete
+            'betting_round_complete': self.betting_round_complete,
+            'side_pots': self.side_pots,
+            'main_pot': self.main_pot
+        }
+    
+    def _create_side_pots(self):
+        """
+        Create side pots when players are all-in with different amounts.
+        
+        This method should be called after betting is complete to properly
+        distribute the pot among eligible players based on their investments.
+        """
+        # Get all players who contributed to the pot (not folded)
+        active_players = [p for p in self.players if not p.folded]
+        
+        if len(active_players) <= 1:
+            self.main_pot = self.pot
+            return
+        
+        # Clear existing side pots
+        self.side_pots = []
+        self.main_pot = 0
+        
+        # Get unique bet levels, sorted from lowest to highest
+        bet_levels = sorted(set(p.current_bet for p in active_players))
+        
+        current_level = 0
+        total_distributed = 0
+        
+        for bet_level in bet_levels:
+            if bet_level > current_level:
+                # Players who contributed at least this amount
+                eligible_players = [p for p in active_players if p.current_bet >= bet_level]
+                
+                # Calculate pot size for this level
+                pot_size = (bet_level - current_level) * len(eligible_players)
+                total_distributed += pot_size
+                
+                if len(self.side_pots) == 0:
+                    # This is the main pot (lowest level that everyone contributed to)
+                    self.main_pot = pot_size
+                else:
+                    # This is a side pot
+                    self.side_pots.append({
+                        'amount': pot_size,
+                        'eligible_players': eligible_players.copy(),
+                        'level': bet_level
+                    })
+                
+                current_level = bet_level
+        
+        # Ensure we've distributed the entire pot
+        if total_distributed != self.pot:
+            # Add any remaining amount to the main pot
+            self.main_pot += (self.pot - total_distributed)
+    
+    def get_pot_info(self) -> Dict[str, Any]:
+        """
+        Get detailed pot information including side pots.
+        
+        Returns:
+            Dict with pot information for display
+        """
+        total_pot = self.main_pot + sum(pot['amount'] for pot in self.side_pots)
+        
+        return {
+            'total_pot': total_pot,
+            'main_pot': self.main_pot,
+            'side_pots': self.side_pots,
+            'num_side_pots': len(self.side_pots)
         }
     
     def remove_bankrupt_players(self) -> List[Any]:
@@ -125,6 +198,10 @@ class TexasHoldemGame:
         self.current_bet = 0
         self.hand_complete = False
         self.betting_round_complete = False
+        
+        # Reset side pot management
+        self.side_pots = []
+        self.main_pot = 0
         
         # Reset all players for new hand
         for player in self.players:
@@ -198,8 +275,7 @@ class TexasHoldemGame:
             call_amount = self.current_bet - player.current_bet
             if call_amount <= 0:
                 return False, "No bet to call - should check instead"
-            if call_amount > player.chips:
-                return False, "Not enough chips to call"
+            # Allow calling even if not enough chips (will go all-in)
             return True, ""
         
         elif action == 'raise':
@@ -395,23 +471,93 @@ class TexasHoldemGame:
     
     def distribute_pot(self, winners: List[Any]) -> int:
         """
-        Distribute the pot to winners.
+        Distribute the pot to winners, handling side pots properly.
         
         Args:
             winners: List of winning players
             
         Returns:
-            Prize amount per winner
+            Total amount distributed
         """
         if not winners:
             return 0
         
-        prize_per_winner = self.pot // len(winners)
+        # First create side pots based on current bets
+        self._create_side_pots()
         
-        for winner in winners:
-            winner.chips += prize_per_winner
+        total_distributed = 0
         
-        return prize_per_winner
+        # Distribute main pot
+        if self.main_pot > 0:
+            # All non-folded players are eligible for main pot
+            eligible_winners = [w for w in winners if not w.folded]
+            if eligible_winners:
+                prize_per_winner = self.main_pot // len(eligible_winners)
+                for winner in eligible_winners:
+                    winner.chips += prize_per_winner
+                    total_distributed += prize_per_winner
+        
+        # Distribute side pots
+        for side_pot in self.side_pots:
+            # Find winners who are eligible for this side pot
+            eligible_winners = [w for w in winners if w in side_pot['eligible_players']]
+            
+            if eligible_winners:
+                prize_per_winner = side_pot['amount'] // len(eligible_winners)
+                for winner in eligible_winners:
+                    winner.chips += prize_per_winner
+                    total_distributed += prize_per_winner
+        
+        return total_distributed
+    
+    def get_side_pot_winners(self, all_scores: List[Tuple[Any, int]]) -> List[Dict[str, Any]]:
+        """
+        Determine winners for each side pot separately.
+        
+        Args:
+            all_scores: List of (player, score) tuples from hand evaluation
+            
+        Returns:
+            List of side pot results with winners and amounts
+        """
+        # Create side pots first
+        self._create_side_pots()
+        
+        results = []
+        
+        # Main pot
+        if self.main_pot > 0:
+            # All non-folded players compete for main pot
+            active_players = [p for p in self.players if not p.folded]
+            eligible_scores = [(p, s) for p, s in all_scores if p in active_players]
+            
+            if eligible_scores:
+                winners = self.determine_winners(eligible_scores)
+                prize_per_winner = self.main_pot // len(winners) if winners else 0
+                
+                results.append({
+                    'pot_type': 'Main Pot',
+                    'amount': self.main_pot,
+                    'winners': winners,
+                    'prize_per_winner': prize_per_winner
+                })
+        
+        # Side pots
+        for i, side_pot in enumerate(self.side_pots):
+            eligible_scores = [(p, s) for p, s in all_scores if p in side_pot['eligible_players']]
+            
+            if eligible_scores:
+                winners = self.determine_winners(eligible_scores)
+                prize_per_winner = side_pot['amount'] // len(winners) if winners else 0
+                
+                results.append({
+                    'pot_type': f'Side Pot {i + 1}',
+                    'amount': side_pot['amount'],
+                    'winners': winners,
+                    'prize_per_winner': prize_per_winner
+                })
+        
+        return results
     
     def advance_dealer_button(self):
         """Move the dealer button to the next position."""
