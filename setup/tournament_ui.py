@@ -3,7 +3,7 @@
 Tournament User Interface Module
 
 This module handles all the visual presentation and user interaction for the tournament.
-Game logic is kept separate in game.py to allow participants to study pure game mechanics.
+Game logic is kept separate in game_logic.py to allow participants to study pure game mechanics.
 """
 
 import os
@@ -12,15 +12,46 @@ from rich.table import Table
 from rich.rule import Rule
 from treys import Card
 from typing import List, Dict, Any, Optional
-import configure_tournament as config
+from . import configure_tournament as config
 
 console = Console()
+
+# Unicode suit symbols for pretty card display
+SUIT_SYMBOLS = {
+    's': '♠',  # \u2660 - spades 
+    'h': '♥',  # \u2665 - hearts
+    'd': '♦',  # \u2666 - diamonds  
+    'c': '♣'   # \u2663 - clubs
+}
+
+# Traditional poker suit colors using Rich markup
+SUIT_COLORS = {
+    's': 'purple',      # spades - purple
+    'h': 'red',        # hearts - red
+    'd': 'yellow',        # diamonds - yellow
+    'c': 'blue'       # clubs - blue
+}
+
+def card_to_pretty_str(card_int):
+    """Convert a treys card integer to a pretty string with Unicode suit symbols and colors."""
+    standard = Card.int_to_str(card_int)
+    rank = standard[:-1]
+    suit_letter = standard[-1]
+    suit_symbol = SUIT_SYMBOLS.get(suit_letter, suit_letter)
+    suit_color = SUIT_COLORS.get(suit_letter, 'white')
+    
+    # Return with Rich color markup
+    return f"{rank}[{suit_color}]{suit_symbol}[/{suit_color}]"
+
+def cards_to_pretty_str(card_list):
+    """Convert a list of cards to pretty string with colored suit symbols."""
+    return " ".join(card_to_pretty_str(card) for card in card_list)
 
 class TournamentUI:
     """
     Handles all user interface and display logic for the tournament.
     
-    Separates presentation from game logic to keep game.py clean for participants
+    Separates presentation from game logic to keep game_logic.py clean for participants
     to study and understand the core poker mechanics.
     """
     
@@ -44,22 +75,19 @@ class TournamentUI:
         
         self.console.print("Press Enter after each action to continue...\n")
     
-    def display_no_bots_error(self):
-        """Display error when no participant bots are found."""
-        self.console.print("[bold red]No participant bots found in player_pool directory![/bold red]")
-        self.console.print("Please add bot .py files to the player_pool directory and restart.")
-    
-    def display_insufficient_players_error(self, num_players: int):
-        """Display error when not enough players for tournament."""
-        self.console.print(f"[bold red]Insufficient players for tournament![/bold red]")
-        self.console.print(f"Found {num_players} bots, but need at least {config.MIN_PLAYERS} players.")
-        self.console.print("Please add more bot .py files to the player_pool directory.")
-    
-    def display_too_many_players_error(self, num_players: int):
-        """Display error when too many players for tournament."""
-        self.console.print(f"[bold yellow]Too many players for tournament![/bold yellow]")
-        self.console.print(f"Found {num_players} bots, but maximum is {config.MAX_PLAYERS} players.")
-        self.console.print("Only the first {config.MAX_PLAYERS} bots will participate.")
+    def display_player_count_error(self, num_players: int):
+        """Display error messages related to player count."""
+        if num_players == 0:
+            self.console.print("[bold red]No participant bots found in player_pool directory![/bold red]")
+            self.console.print("Please add bot .py files to the player_pool directory and restart.")
+        elif num_players < config.MIN_PLAYERS:
+            self.console.print(f"[bold red]Insufficient players for tournament![/bold red]")
+            self.console.print(f"Found {num_players} bots, but need at least {config.MIN_PLAYERS} players.")
+            self.console.print("Please add more bot .py files to the player_pool directory.")
+        elif num_players > config.MAX_PLAYERS:
+            self.console.print(f"[bold yellow]Too many players for tournament![/bold yellow]")
+            self.console.print(f"Found {num_players} bots, but maximum is {config.MAX_PLAYERS} players.")
+            self.console.print("Only the first {config.MAX_PLAYERS} bots will participate.")
     
     def display_tournament_participants(self, players: List[Any]):
         """Display list of tournament participants."""
@@ -186,11 +214,13 @@ class TournamentUI:
             if not status:
                 status.append("[green]Active[/green]")
             
-            # Format hole cards - show them if player has cards and hasn't folded
-            if player.hand and not player.folded:
-                hole_cards = " ".join([Card.int_to_str(card) for card in player.hand])
-            elif player.folded:
-                hole_cards = "[dim]Folded[/dim]"
+            # Format hole cards - show actual cards, dimmed if folded
+            if player.hand:
+                if player.folded:
+                    # Show actual cards but dimmed when folded
+                    hole_cards = f"[dim]{cards_to_pretty_str(player.hand)}[/dim]"
+                else:
+                    hole_cards = cards_to_pretty_str(player.hand)
             else:
                 hole_cards = "[dim]--[/dim]"
             
@@ -221,7 +251,7 @@ class TournamentUI:
             else:
                 stage_name = "Community Cards"
             
-            community_str = " ".join([Card.int_to_str(card) for card in community_cards])
+            community_str = cards_to_pretty_str(community_cards)
             community_table = Table(title="Community Cards")
             community_table.add_column(stage_name, style="green", justify="center")
             community_table.add_row(community_str)
@@ -272,7 +302,7 @@ class TournamentUI:
         action_table.add_column("Info", style="cyan")
         action_table.add_column("Value", style="white")
         
-        hand_str = ' '.join([Card.int_to_str(card) for card in player.hand])
+        hand_str = cards_to_pretty_str(player.hand)
         
         action_table.add_row("Hand", f"[green]{hand_str}[/green]")
         action_table.add_row("Chips", f"[yellow]${player.chips}[/yellow]")
@@ -314,39 +344,53 @@ class TournamentUI:
         """Prompt to continue after player action."""
         input(f"Press Enter to continue after {player_name}'s action...")
     
-    def display_showdown_header(self):
-        """Display showdown header."""
-        self.console.print("[bold green]--- Showdown ---[/bold green]")
+    def display_showdown_header(self, community_cards=None):
+        """Display clean showdown screen with community cards."""
+        self.console.clear()
+        self.console.print("\n[bold cyan]═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════[/bold cyan]")
+        self.console.print("[bold cyan]                                                    SHOWDOWN                                                          [/bold cyan]")
+        self.console.print("[bold cyan]═══════════════════════════════════════════════════════════════════════════════════════════════════════════════════[/bold cyan]\n")
+        
+        # Display community cards if provided
+        if community_cards:
+            community_str = cards_to_pretty_str(community_cards)
+            community_table = Table(title="[bold yellow]Final Board[/bold yellow]", title_style="bold yellow")
+            community_table.add_column("Community Cards", style="green", justify="center")
+            community_table.add_row(community_str)
+            self.console.print(community_table)
+            self.console.print()  # Add spacing
     
     def display_showdown_results(self, active_players: List[Any], scores: List[tuple], evaluator):
         """Display showdown hand rankings."""
-        table = Table(title="Showdown Results")
-        table.add_column("Player", style="cyan")
-        table.add_column("Hand")
-        table.add_column("Rank", style="magenta")
+        self.console.print()  # Add spacing
+        table = Table(title="[bold yellow]Hand Rankings[/bold yellow]", title_style="bold yellow")
+        table.add_column("Player", style="cyan", justify="center")
+        table.add_column("Hole Cards", justify="center")
+        table.add_column("Best Hand", style="magenta", justify="center")
         
         for player, score in scores:
             hand_class = evaluator.class_to_string(evaluator.get_rank_class(score))
             table.add_row(
                 player.name,
-                " ".join([Card.int_to_str(card) for card in player.hand]),
+                cards_to_pretty_str(player.hand),
                 hand_class
             )
         
         self.console.print(table)
+        self.console.print()  # Add spacing after results
     
     def display_hand_winner(self, winner_name: str, prize: int, hand_class: str):
         """Display hand winner announcement."""
-        self.console.print(f"[bold yellow]{winner_name} wins {prize} chips with {hand_class}[/bold yellow]")
+        self.console.print(f"\n[bold green]{winner_name} wins ${prize} with {hand_class}[/bold green]")
     
     def display_side_pot_winner(self, pot_type: str, winner_name: str, prize: int, hand_class: str):
         """Display side pot winner announcement."""
-        self.console.print(f"[bold cyan]{pot_type}:[/bold cyan] [bold yellow]{winner_name} wins {prize} chips with {hand_class}[/bold yellow]")
+        self.console.print(f"[bold cyan]{pot_type}:[/bold cyan] [bold green]{winner_name} wins ${prize} with {hand_class}[/bold green]")
     
     def display_side_pot_split(self, pot_type: str, winner_names: List[str], prize_per_winner: int):
         """Display side pot split among multiple winners."""
-        winners_str = " and ".join(winner_names)
-        self.console.print(f"[bold cyan]{pot_type}:[/bold cyan] [bold yellow]{winners_str} split {prize_per_winner} chips each[/bold yellow]")
+        winners_str = " & ".join(winner_names)
+        self.console.print(f"[bold cyan]{pot_type}:[/bold cyan] [bold green]{winners_str} each win ${prize_per_winner}[/bold green]")
     
     def display_community_cards_header(self, round_name: str):
         """Display community cards dealing header."""

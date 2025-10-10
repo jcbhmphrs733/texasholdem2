@@ -47,12 +47,42 @@ class ParentBot(ABC):
         
         Args:
             game_state (Dict): Dictionary containing current game information:
+                BASIC GAME STATE:
                 - 'current_bet' (int): The current highest bet this round
                 - 'min_raise' (int): Minimum amount to raise (usually big blind)
                 - 'max_raise' (int): Maximum you can bet (your chips + current_bet)
                 - 'pot' (int): Total chips in the pot
                 - 'community_cards' (List): Community cards dealt so far (empty pre-flop)
                 - 'player_bet' (int): Your current bet this round
+                
+                ENHANCED OPPONENT INFORMATION:
+                - 'opponents' (List[Dict]): List of opponent information:
+                    * 'name' (str): Opponent's name
+                    * 'chips' (int): Opponent's chip count
+                    * 'current_bet' (int): Opponent's bet this round
+                    * 'position' (int): Opponent's table position
+                    * 'is_dealer' (bool): Whether opponent is dealer
+                    * 'folded' (bool): Whether opponent has folded
+                    * 'all_in' (bool): Whether opponent is all-in
+                    * 'active' (bool): Whether opponent can still act
+                
+                POSITION INFORMATION:
+                - 'your_position' (int): Your position at the table
+                - 'dealer_position' (int): Current dealer position
+                - 'num_active_players' (int): Number of players still in hand
+                - 'num_betting_players' (int): Number of players who can still bet
+                
+                ACTION HISTORY (resets each hand):
+                - 'hand_actions' (List[Dict]): Actions taken this hand:
+                    * 'player_name' (str): Who acted
+                    * 'action' (str): What they did
+                    * 'amount' (int): How much
+                    * 'round' (str): When (Pre-flop, Flop, Turn, River)
+                    * 'position' (int): Their position
+                
+                BLIND INFORMATION:
+                - 'small_blind' (int): Small blind amount
+                - 'big_blind' (int): Big blind amount
         
         Returns:
             Tuple[str, int]: (action, amount) where:
@@ -111,12 +141,24 @@ class ParentBot(ABC):
     
     def on_hand_complete(self, winner: str, pot_size: int, winning_hand: Optional[List[int]] = None) -> None:
         """
-        Called when a hand is completed. Override to track statistics.
+        Called when a hand is completed. Override to track statistics and learn
+        from results. This is called for all players regardless of who won.
         
         Args:
             winner (str): Name of the player who won the hand
             pot_size (int): Size of the pot that was won
-            winning_hand (Optional[List[int]]): The winning hand cards (if shown)
+            winning_hand (Optional[List[int]]): The winning hand cards (if showdown occurred)
+        
+        Example:
+            def on_hand_complete(self, winner, pot_size, winning_hand):
+                super().on_hand_complete(winner, pot_size, winning_hand)
+                
+                if winner == self.name:
+                    self.recent_wins.append(pot_size)
+                else:
+                    # Learn from opponent's winning strategy
+                    if winning_hand:
+                        self.analyze_opponent_showdown(winner, winning_hand)
         """
         if winner == self.name:
             self.hands_won += 1
@@ -124,22 +166,45 @@ class ParentBot(ABC):
     
     def on_player_action(self, player_name: str, action: str, amount: int) -> None:
         """
-        Called when any player takes an action. Override to track opponent behavior.
+        Called when any player (including yourself) takes an action. 
+        Override to track opponent behavior and build opponent models.
+        
+        This method is called immediately after each action is executed,
+        allowing you to analyze betting patterns, aggression levels, and
+        other behavioral indicators.
         
         Args:
             player_name (str): Name of the player who acted
-            action (str): Action taken ('fold', 'check', 'call', 'raise')
-            amount (int): Amount of the action
+            action (str): Action taken ('fold', 'check', 'call', 'raise', 'call_all_in', 'raise_all_in')
+            amount (int): Amount of the action (0 for fold/check, bet amount for others)
+        
+        Example:
+            def on_player_action(self, player_name, action, amount):
+                if player_name != self.name:  # Track opponents only
+                    if action in ['raise', 'raise_all_in']:
+                        self.opponent_aggression[player_name] += 1
+                    elif action == 'fold':
+                        self.opponent_fold_frequency[player_name] += 1
         """
         pass
     
     def on_community_cards_dealt(self, cards: List[int], stage: str) -> None:
         """
-        Called when community cards are dealt. Override to analyze board texture.
+        Called when community cards are dealt. Override to analyze board texture
+        and adjust your strategy based on how the board develops.
         
         Args:
-            cards (List[int]): The community cards dealt so far
+            cards (List[int]): The community cards dealt so far (complete list)
             stage (str): The current stage ('flop', 'turn', 'river')
+        
+        Example:
+            def on_community_cards_dealt(self, cards, stage):
+                if stage == 'flop':
+                    # Analyze flop texture (wet vs dry, coordinated vs rainbow)
+                    self.board_texture = self.analyze_flop_texture(cards)
+                elif stage == 'turn':
+                    # Check if turn card improved draws
+                    self.turn_improved_draws = self.check_turn_draws(cards)
         """
         pass
     
@@ -180,45 +245,3 @@ class ParentBot(ABC):
     def __repr__(self) -> str:
         """Detailed string representation for debugging."""
         return f"ParentBot(name='{self.name}', chips={self.chips}, hands_played={self.hands_played})"
-
-
-# Example implementation for reference
-class ExampleBot(ParentBot):
-    """
-    Example bot implementation showing how to use the ParentBot class.
-    This bot uses simple logic and can serve as a starting point.
-    """
-    
-    def decide_action(self, game_state: Dict[str, Any]) -> Tuple[str, int]:
-        """Simple example bot logic."""
-        # Can we check?
-        can_check = game_state['current_bet'] == game_state['player_bet']
-        
-        # Get basic hand strength
-        hand_strength = self.get_hand_strength()
-        
-        # Simple decision logic
-        if hand_strength < 0.3:  # Weak hand
-            if can_check:
-                return ('check', 0)
-            else:
-                return ('fold', 0)
-        elif hand_strength < 0.6:  # Medium hand
-            if can_check:
-                return ('check', 0)
-            else:
-                call_amount = game_state['current_bet'] - game_state['player_bet']
-                if call_amount <= self.chips:
-                    return ('call', game_state['current_bet'])
-                else:
-                    return ('fold', 0)
-        else:  # Strong hand
-            # Try to raise
-            min_raise = game_state['current_bet'] + game_state['min_raise']
-            if min_raise <= self.chips + game_state['player_bet']:
-                return ('raise', min_raise)
-            elif game_state['current_bet'] <= self.chips + game_state['player_bet']:
-                return ('call', game_state['current_bet'])
-            else:
-                return ('fold', 0)
-

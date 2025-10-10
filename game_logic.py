@@ -62,6 +62,9 @@ class TexasHoldemGame:
         self.last_action = None
         self.betting_round_complete = False
         self.hand_complete = False
+        
+        # Action history for current hand (resets each hand)
+        self.current_hand_actions = []  # List of action dictionaries
     
     def update_blinds(self, small_blind: int, big_blind: int):
         """Update blind amounts (for blind level increases)."""
@@ -75,10 +78,13 @@ class TexasHoldemGame:
         Returns:
             Dict containing all relevant game state information
         """
+        # Use self.pot for display during betting rounds, or calculate from side pots if they exist
+        total_display_pot = self.pot if not self.side_pots else self.main_pot + sum(pot['amount'] for pot in self.side_pots)
+        
         return {
             'players': self.players,
             'community_cards': self.community_cards,
-            'pot': self.main_pot + sum(pot['amount'] for pot in self.side_pots),  # Total pot for display
+            'pot': total_display_pot,  # Current total pot for display
             'current_bet': self.current_bet,
             'dealer_pos': self.dealer_pos,
             'small_blind': self.small_blind,
@@ -89,56 +95,97 @@ class TexasHoldemGame:
             'main_pot': self.main_pot
         }
     
+    def get_player_game_state(self, acting_player: Any) -> Dict[str, Any]:
+        """
+        Get enhanced game state for a specific player's decision making.
+        
+        Args:
+            acting_player: The player who needs to make a decision
+            
+        Returns:
+            Dict containing game state with opponent information and action history
+        """
+        # Basic game state (original format)
+        # Use self.pot for display during betting rounds, or calculate from side pots if they exist
+        current_pot = self.pot if not self.side_pots else self.main_pot + sum(pot['amount'] for pot in self.side_pots)
+        
+        game_state = {
+            'current_bet': self.current_bet,
+            'min_raise': self.big_blind,
+            'max_raise': acting_player.chips + acting_player.current_bet,
+            'pot': current_pot,
+            'community_cards': self.community_cards,
+            'player_bet': acting_player.current_bet
+        }
+        
+        # Enhanced opponent information
+        opponents = []
+        for i, player in enumerate(self.players):
+            if player.name != acting_player.name:
+                opponents.append({
+                    'name': player.name,
+                    'chips': player.chips,
+                    'current_bet': player.current_bet,
+                    'position': i,
+                    'is_dealer': i == self.dealer_pos,
+                    'folded': player.folded,
+                    'all_in': player.all_in,
+                    'active': not player.folded and not player.all_in
+                })
+        
+        # Position information for acting player
+        acting_player_pos = None
+        for i, player in enumerate(self.players):
+            if player.name == acting_player.name:
+                acting_player_pos = i
+                break
+        
+        # Add enhanced information
+        game_state.update({
+            'opponents': opponents,
+            'your_position': acting_player_pos,
+            'dealer_position': self.dealer_pos,
+            'num_active_players': len(self.get_active_players()),
+            'num_betting_players': len(self.get_betting_players()),
+            'hand_actions': self.current_hand_actions.copy(),  # Copy to prevent modification
+            'small_blind': self.small_blind,
+            'big_blind': self.big_blind
+        })
+        
+        return game_state
+    
+    def _get_current_round_name(self) -> str:
+        """Get the current betting round name based on community cards."""
+        num_cards = len(self.community_cards)
+        if num_cards == 0:
+            return 'Pre-flop'
+        elif num_cards == 3:
+            return 'Flop'
+        elif num_cards == 4:
+            return 'Turn'
+        elif num_cards == 5:
+            return 'River'
+        else:
+            return 'Unknown'
+    
+    def _get_player_position(self, player: Any) -> int:
+        """Get a player's position in the game."""
+        for i, p in enumerate(self.players):
+            if p.name == player.name:
+                return i
+        return -1
+    
     def _create_side_pots(self):
         """
         Create side pots when players are all-in with different amounts.
         
         This method should be called after betting is complete to properly
         distribute the pot among eligible players based on their investments.
+        
+        Note: During betting, _update_side_pots_during_betting() handles real-time updates.
         """
-        # Get all players who contributed to the pot (not folded)
-        active_players = [p for p in self.players if not p.folded]
-        
-        if len(active_players) <= 1:
-            self.main_pot = self.pot
-            return
-        
-        # Clear existing side pots
-        self.side_pots = []
-        self.main_pot = 0
-        
-        # Get unique bet levels, sorted from lowest to highest
-        bet_levels = sorted(set(p.current_bet for p in active_players))
-        
-        current_level = 0
-        total_distributed = 0
-        
-        for bet_level in bet_levels:
-            if bet_level > current_level:
-                # Players who contributed at least this amount
-                eligible_players = [p for p in active_players if p.current_bet >= bet_level]
-                
-                # Calculate pot size for this level
-                pot_size = (bet_level - current_level) * len(eligible_players)
-                total_distributed += pot_size
-                
-                if len(self.side_pots) == 0:
-                    # This is the main pot (lowest level that everyone contributed to)
-                    self.main_pot = pot_size
-                else:
-                    # This is a side pot
-                    self.side_pots.append({
-                        'amount': pot_size,
-                        'eligible_players': eligible_players.copy(),
-                        'level': bet_level
-                    })
-                
-                current_level = bet_level
-        
-        # Ensure we've distributed the entire pot
-        if total_distributed != self.pot:
-            # Add any remaining amount to the main pot
-            self.main_pot += (self.pot - total_distributed)
+        # Use the same logic as the dynamic update method
+        self._update_side_pots_during_betting()
     
     def get_pot_info(self) -> Dict[str, Any]:
         """
@@ -198,6 +245,9 @@ class TexasHoldemGame:
         self.current_bet = 0
         self.hand_complete = False
         self.betting_round_complete = False
+        
+        # Reset action history for new hand
+        self.current_hand_actions = []
         
         # Reset side pot management
         self.side_pots = []
@@ -356,7 +406,73 @@ class TexasHoldemGame:
             self.current_bet = amount
             result['display_amount'] = amount
         
+        # Update side pots dynamically if any player went all-in
+        if action in ['call', 'raise'] and player.all_in:
+            self._update_side_pots_during_betting()
+        
+        # Record action in hand history
+        action_record = {
+            'player_name': player.name,
+            'action': result['display_action'],
+            'amount': result['display_amount'],
+            'round': self._get_current_round_name(),
+            'position': self._get_player_position(player)
+        }
+        self.current_hand_actions.append(action_record)
+        
         return result
+    
+    def _update_side_pots_during_betting(self):
+        """
+        Update side pots dynamically during betting when players go all-in.
+        This ensures proper pot splitting in real-time.
+        """
+        # Only create side pots if there are all-in players
+        all_in_players = [p for p in self.players if p.all_in and not p.folded]
+        active_players = [p for p in self.players if not p.folded]
+        
+        if len(all_in_players) == 0 or len(active_players) <= 1:
+            # No side pots needed
+            self.side_pots = []
+            self.main_pot = self.pot
+            return
+        
+        # Clear existing side pots for recalculation
+        self.side_pots = []
+        self.main_pot = 0
+        
+        # Get unique bet levels, sorted from lowest to highest
+        bet_levels = sorted(set(p.current_bet for p in active_players))
+        
+        current_level = 0
+        total_distributed = 0
+        
+        for bet_level in bet_levels:
+            if bet_level > current_level:
+                # Players who contributed at least this amount
+                eligible_players = [p for p in active_players if p.current_bet >= bet_level]
+                
+                # Calculate pot size for this level
+                pot_size = (bet_level - current_level) * len(eligible_players)
+                total_distributed += pot_size
+                
+                if current_level == 0:
+                    # This is the main pot (lowest level that everyone contributed to)
+                    self.main_pot = pot_size
+                else:
+                    # This is a side pot
+                    self.side_pots.append({
+                        'amount': pot_size,
+                        'eligible_players': eligible_players.copy(),
+                        'level': bet_level
+                    })
+                
+                current_level = bet_level
+        
+        # Ensure we've distributed the entire pot
+        if total_distributed != self.pot:
+            # Add any remaining amount to the main pot
+            self.main_pot += (self.pot - total_distributed)
     
     def get_betting_order(self, round_name: str) -> List[int]:
         """

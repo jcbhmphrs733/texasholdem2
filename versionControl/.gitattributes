@@ -1,0 +1,27 @@
+# Git attributes for repository security
+# Core game files - read-only, cannot be modified by participants
+game_logic.py merge=ours
+ParentBot.py merge=ours
+main_tournament.py merge=ours
+tournament_ui.py merge=ours
+tournament_stats.py merge=ours
+tournament_analysis.py merge=ours
+configure_tournament.py merge=ours
+get_participants.py merge=ours
+
+# These files are protected from participant modifications
+game_logic.py -diff -merge
+ParentBot.py -diff -merge
+main_tournament.py -diff -merge
+tournament_ui.py -diff -merge
+tournament_stats.py -diff -merge
+tournament_analysis.py -diff -merge
+configure_tournament.py -diff -merge
+get_participants.py -diff -merge
+README.md -diff -merge
+
+# Participant-modifiable files
+template.py diff merge
+dojo.py diff merge
+player_pool/*.py diff merge
+DOJO_README.md diff merge

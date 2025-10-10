@@ -1,17 +1,11 @@
 # Texas Hold'em Bot Hackathon Tournament
 from rich.console import Console
 from game_logic import TexasHoldemGame
-from tournament_ui import TournamentUI
-from tournament_stats import TournamentStats
-from tournament_analysis import TournamentAnalyzer
-
-# Import participant bots from player pool
+from setup.tournament_ui import TournamentUI
+from setup.tournament_stats import TournamentStats
+from setup.tournament_analysis import TournamentAnalyzer
 from player_pool import get_all_bots, get_bot_summary
-
-# Import tournament configuration
-import configure_tournament as config
-
-# Import ParentBot for fallback bots
+import setup.configure_tournament as config
 from ParentBot import ParentBot
 import random
 from typing import Dict, Any, Tuple
@@ -31,7 +25,6 @@ def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str,
     """
     ui.display_betting_round_header(round_name)
     
-    # Clear screen for clean betting round display
     if round_name != "Pre-flop":
         ui.clear_screen()
         game_state = game.get_game_state()
@@ -41,12 +34,10 @@ def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str,
             game_state['side_pots'], game_state['main_pot']
         )
     
-    # Get betting order
     betting_order = game.get_betting_order(round_name)
     last_raiser_pos = None
     players_to_act = [pos for pos in betting_order if not game.players[pos].folded and not game.players[pos].all_in]
     
-    # Track who has acted this round
     players_acted = set()
     
     while True:
@@ -55,20 +46,16 @@ def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str,
         for pos in betting_order:
             player = game.players[pos]
             
-            # Skip players who folded, are all-in, or have already acted unless there was a raise
             if player.folded or player.all_in:
                 continue
                 
-            # If there was a raise, everyone needs to act again (except the raiser)
             if last_raiser_pos is not None:
                 if pos in players_acted and pos != last_raiser_pos:
-                    players_acted.discard(pos)  # Remove so they can act again
+                    players_acted.discard(pos)
             
-            # If player has already acted and no raise since, skip them
             if pos in players_acted:
                 continue
             
-            # Clear screen and show updated game state
             ui.clear_screen()
             game_state = game.get_game_state()
             ui.display_persistent_game_state(
@@ -77,22 +64,13 @@ def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str,
                 game_state['side_pots'], game_state['main_pot']
             )
             
-            # Show player's turn info
             ui.display_player_action_table(player)
             
-            # Get player decision
-            player_game_state = {
-                'current_bet': game.current_bet,
-                'min_raise': game.big_blind,
-                'max_raise': player.chips + player.current_bet,
-                'pot': game.pot,
-                'community_cards': game.community_cards,
-                'player_bet': player.current_bet
-            }
+            # Get enhanced player decision state
+            player_game_state = game.get_player_game_state(player)
             
             action, amount = player.decide_action(player_game_state)
             
-            # Validate and execute action
             is_valid, error_msg = game.validate_action(player, action, amount)
             
             if not is_valid:
@@ -101,27 +79,34 @@ def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str,
                 ui.prompt_action_continue(player.name)
                 continue
             
-            # Execute the action
             result = game.execute_action(player, action, amount)
             
-            # Track statistics
+            # Notify all players about the action taken
+            for bot_player in game.players:
+                try:
+                    bot_player.on_player_action(
+                        result['player_name'], 
+                        result['display_action'], 
+                        result['display_amount']
+                    )
+                except Exception:
+                    # Ignore callback errors to prevent bot crashes from affecting the game
+                    pass
+            
             stats.record_action(result['player_name'], result['display_action'], 
                               result['display_amount'], round_name)
             
-            # Display result
             ui.display_player_action_result(
                 result['player_name'], result['display_action'], result['display_amount']
             )
             
-            # Track that this player has acted
             players_acted.add(pos)
             action_taken_this_round = True
             
-            # Track if this was a raise for betting round completion
             if result['display_action'] in ['raise', 'raise_all_in']:
                 last_raiser_pos = pos
-                players_acted.clear()  # Clear all previous actions since there was a raise
-                players_acted.add(pos)  # Raiser has acted
+                players_acted.clear()
+                players_acted.add(pos)
             
             ui.prompt_action_continue(player.name)
             
@@ -147,7 +132,7 @@ def run_showdown(game: TexasHoldemGame, ui: TournamentUI, stats: TournamentStats
         ui: The UI instance
         stats: Statistics tracker
     """
-    ui.display_showdown_header()
+    ui.display_showdown_header(game.community_cards)
     
     active_players = game.get_active_players()
     
@@ -158,6 +143,14 @@ def run_showdown(game: TexasHoldemGame, ui: TournamentUI, stats: TournamentStats
         winner.chips += total_pot
         ui.display_hand_winner(winner.name, total_pot, "Unopposed")
         stats.record_hand_winner(winner.name, total_pot)
+        
+        # Notify all players that the hand is complete
+        for bot_player in game.players:
+            try:
+                bot_player.on_hand_complete(winner.name, total_pot, None)
+            except Exception:
+                # Ignore callback errors
+                pass
         return
     
     # Evaluate hands for all active players
@@ -192,6 +185,32 @@ def run_showdown(game: TexasHoldemGame, ui: TournamentUI, stats: TournamentStats
             ui.display_side_pot_split(pot_type, winner_names, prize_per_winner)
             for winner in winners:
                 stats.record_hand_winner(winner.name, prize_per_winner)
+    
+    # Notify all players that the hand is complete
+    # Get the primary winner and pot size for the callback
+    main_pot_result = side_pot_results[0] if side_pot_results else None
+    if main_pot_result and len(main_pot_result['winners']) > 0:
+        primary_winner = main_pot_result['winners'][0]
+        primary_pot_size = main_pot_result['prize_per_winner']
+        
+        # Get winning hand if available
+        winning_hand = None
+        for winner in main_pot_result['winners']:
+            if hasattr(winner, 'hand') and winner.hand:
+                winning_hand = winner.hand.copy()
+                break
+        
+        # Notify all players
+        for bot_player in game.players:
+            try:
+                bot_player.on_hand_complete(
+                    primary_winner.name, 
+                    primary_pot_size, 
+                    winning_hand
+                )
+            except Exception:
+                # Ignore callback errors
+                pass
 
 def main():
     # Initialize UI, statistics, and analyzer
@@ -207,16 +226,15 @@ def main():
     participant_bots = get_all_bots(starting_chips=config.STARTING_CHIPS)
     
     if not participant_bots:
-        ui.display_no_bots_error()
+        ui.display_player_count_error(0)
         return
     
-    # Validate player count
     if len(participant_bots) < config.MIN_PLAYERS:
-        ui.display_insufficient_players_error(len(participant_bots))
+        ui.display_player_count_error(len(participant_bots))
         return
     
     if len(participant_bots) > config.MAX_PLAYERS:
-        ui.display_too_many_players_error(len(participant_bots))
+        ui.display_player_count_error(len(participant_bots))
         participant_bots = participant_bots[:config.MAX_PLAYERS]
     
     players = participant_bots
@@ -279,6 +297,14 @@ def main():
                 game.deal_community_cards(3)
                 game.reset_bets_for_new_round()
                 
+                # Notify all players about flop cards
+                for bot_player in game.players:
+                    try:
+                        bot_player.on_community_cards_dealt(game.community_cards.copy(), "flop")
+                    except Exception:
+                        # Ignore callback errors
+                        pass
+                
                 # Track flop progression
                 for player in game.get_active_players():
                     stats.record_round_progression(player.name, "Flop")
@@ -290,6 +316,14 @@ def main():
                 game.deal_community_cards(1)
                 game.reset_bets_for_new_round()
                 
+                # Notify all players about turn card
+                for bot_player in game.players:
+                    try:
+                        bot_player.on_community_cards_dealt(game.community_cards.copy(), "turn")
+                    except Exception:
+                        # Ignore callback errors
+                        pass
+                
                 # Track turn progression
                 for player in game.get_active_players():
                     stats.record_round_progression(player.name, "Turn")
@@ -300,6 +334,14 @@ def main():
             if len(game.get_active_players()) > 1:
                 game.deal_community_cards(1)
                 game.reset_bets_for_new_round()
+                
+                # Notify all players about river card
+                for bot_player in game.players:
+                    try:
+                        bot_player.on_community_cards_dealt(game.community_cards.copy(), "river")
+                    except Exception:
+                        # Ignore callback errors
+                        pass
                 
                 # Track river progression
                 for player in game.get_active_players():
@@ -347,7 +389,7 @@ def main():
     analyzer.display_comprehensive_analysis(stats, game.players)
     
     # Show final standings (simplified version after detailed analysis)
-    ui.display_final_standings(game.players)
+    # ui.display_final_standings(game.players)
     ui.display_thanks()
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 from ParentBot import ParentBot
 from typing import Dict, Any, Tuple
 
-class TestPassiveBot(ParentBot):
+class PassiveBot(ParentBot):
     """
     Test bot that always checks or calls (never raises, never folds).
     This will help us test that all betting rounds work properly.

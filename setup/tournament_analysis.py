@@ -1,13 +1,4 @@
 # Tournament Analysis and Podium Display
-"""
-Post-tournament analysis display system.
-
-Generates comprehensive tournament reports including:
-- Podium ceremony for top finishers
-- Detailed player analysis and statistics
-- Interesting tournament facts and records
-- Performance insights and patterns
-"""
 
 from rich.console import Console
 from rich.table import Table
@@ -15,12 +6,12 @@ from rich.panel import Panel
 from rich.columns import Columns
 from rich.text import Text
 from typing import List, Dict, Any
-from tournament_stats import TournamentStats
+from .tournament_stats import TournamentStats
+from .tournament_ui import cards_to_pretty_str, card_to_pretty_str
+from treys import Card
 
 class TournamentAnalyzer:
-    """
-    Generates and displays comprehensive post-tournament analysis.
-    """
+    """Generates and displays comprehensive post-tournament analysis."""
     
     def __init__(self, console: Console):
         """Initialize the tournament analyzer."""
@@ -42,67 +33,45 @@ class TournamentAnalyzer:
         self._display_all_player_analyses(stats, final_players)
     
     def _display_tournament_overview_with_records(self, stats: TournamentStats):
-        """Display overall tournament statistics combined with records."""
+        """Display comprehensive tournament summary combining overview and records."""
         summary = stats.get_tournament_summary()
-        
-        # Tournament Overview Section
-        overview_table = Table(title="Tournament Overview", show_header=False)
-        overview_table.add_column("Metric", style="cyan", width=25)
-        overview_table.add_column("Value", style="white", width=30)
-        
-        overview_table.add_row("Total Hands Played", f"{summary['total_hands_played']}")
-        overview_table.add_row("Total Players", f"{summary['total_players']}")
-        overview_table.add_row("Biggest Pot", f"${summary['biggest_pot']} (won by {summary['biggest_pot_winner']})")
-        overview_table.add_row("Average Pot Size", f"${summary['average_pot_size']}")
-        
-        self.console.print(overview_table)
-        self.console.print()
-        
-        # Tournament Records Section
         best_hand = summary['best_hand_seen']
         
-        records_table = Table(title="Tournament Records & Interesting Facts", show_header=True)
-        records_table.add_column("Record", style="bold cyan", width=30)
-        records_table.add_column("Details", style="white", width=40)
+        # Combined Tournament Summary Table
+        summary_table = Table(title="Tournament Summary", show_header=False)
+        summary_table.add_column("Metric", style="cyan", width=25)
+        summary_table.add_column("Value", style="white", width=50)
         
-        # Only show best hand if there is one
+        # Basic tournament metrics
+        summary_table.add_row("Total Hands Played", f"{summary['total_hands_played']}")
+        summary_table.add_row("Total Players", f"{summary['total_players']}")
+        summary_table.add_row("Average Pot Size", f"${summary['average_pot_size']}")
+        
+        # Tournament records
+        summary_table.add_row("Biggest Pot", f"${summary['biggest_pot']} (won by {summary['biggest_pot_winner']})" if summary['biggest_pot_winner'] else "No pots won yet")
+        
+        # Best hand information
         if best_hand and 'player' in best_hand:
-            records_table.add_row(
-                "Best Hand Seen",
-                f"{best_hand['description']} by {best_hand['player']}"
-            )
+            summary_table.add_row("Best Hand Seen", f"{best_hand['description']} by {best_hand['player']}")
             
             if best_hand.get('hole_cards'):
-                hole_cards_str = " ".join(best_hand['hole_cards'])
-                community_cards_str = " ".join(best_hand['community_cards'])
-                records_table.add_row(
-                    "   Hole Cards",
-                    hole_cards_str
-                )
-                records_table.add_row(
-                    "   Community Cards", 
-                    community_cards_str
-                )
+                # Convert card strings back to integers and display with colors
+                hole_card_ints = [Card.new(card_str) for card_str in best_hand['hole_cards']]
+                community_card_ints = [Card.new(card_str) for card_str in best_hand['community_cards']]
+                
+                hole_cards_str = cards_to_pretty_str(hole_card_ints)
+                community_cards_str = cards_to_pretty_str(community_card_ints)
+                
+                summary_table.add_row("   Hole Cards", hole_cards_str)
+                summary_table.add_row("   Community Cards", community_cards_str)
         else:
-            records_table.add_row(
-                "Best Hand Seen",
-                "No completed showdowns yet"
-            )
+            summary_table.add_row("Best Hand Seen", "No completed showdowns yet")
         
-        records_table.add_row(
-            "Biggest Pot",
-            f"${summary['biggest_pot']} won by {summary['biggest_pot_winner']}" if summary['biggest_pot_winner'] else "No pots won yet"
-        )
-        records_table.add_row(
-            "Most Aggressive",
-            summary['most_aggressive_player']
-        )
-        records_table.add_row(
-            "Most Conservative",
-            summary['most_conservative_player']
-        )
-        
-        self.console.print(records_table)
+        # Playing style insights
+        summary_table.add_row("Most Aggressive Player", summary['most_aggressive_player'])
+        summary_table.add_row("Most Conservative Player", summary['most_conservative_player'])
+
+        self.console.print(summary_table)
         self.console.print()
     
     def _display_all_player_analyses(self, stats: TournamentStats, final_players: List[Any]):
@@ -147,7 +116,8 @@ class TournamentAnalyzer:
     def _display_single_player_analysis(self, analysis: Dict[str, Any], position: int):
         """Display analysis for a single player."""
         name = analysis['name']
-        
+        # Add separator line with player name announcement
+        self.console.rule(f"[bold green]{name}[/bold green]")
         # Create main stats table
         stats_table = Table(show_header=False, box=None)
         stats_table.add_column("Stat", style="cyan", width=20)
@@ -157,8 +127,8 @@ class TournamentAnalyzer:
         
         # Performance metrics
         stats_table.add_row(
-            "Final Position", f"#{analysis['final_position']}",
-            "Hands Played", f"{analysis['hands_played']}"
+            "Hands Played", f"{analysis['hands_played']}",
+            "Hands Won", f"{analysis['hands_won']}"
         )
         stats_table.add_row(
             "Hands Won", f"{analysis['hands_won']}",
@@ -177,32 +147,13 @@ class TournamentAnalyzer:
             "Biggest Pot Won", f"${analysis['biggest_pot_won']:,}"
         )
         
-        # Display the table first
-        self.console.print(f"\n[bold]{name}[/bold] - Position #{position}")
         self.console.print(stats_table)
         
-        # Behavioral analysis (if available)
-        behavior_stats = []
         if 'fold_frequency' in analysis:
-            behavior_stats.extend([
-                f"Fold Frequency: {analysis['fold_frequency']:.1%}",
-                f"Aggression Rate: {analysis['aggression_frequency']:.1%}",
-                f"Pre-flop Fold Rate: {analysis['pre_flop_fold_rate']:.1%}",
-                f"Showdown Frequency: {analysis['showdown_frequency']:.1%}"
-            ])
-            
-            if analysis['average_raise_amount'] > 0:
-                behavior_stats.append(f"Avg Raise Amount: ${analysis['average_raise_amount']:.0f}")
-        
-        # Display behavioral analysis
-        if behavior_stats:
             self.console.print(f"\n[bold cyan]Playing Style:[/bold cyan]")
-            for stat in behavior_stats:
-                self.console.print(f"  {stat}")
+            self.console.print(f"  Fold: {analysis['fold_frequency']:.1%} | Aggression: {analysis['aggression_frequency']:.1%} | Pre-flop Fold: {analysis['pre_flop_fold_rate']:.1%}")
+            if analysis['average_raise_amount'] > 0:
+                self.console.print(f"  Avg Raise: ${analysis['average_raise_amount']:.0f} | Showdowns: {analysis['showdown_frequency']:.1%}")
         
-        # Strongest hand
         self.console.print(f"\n[bold green]Best Hand:[/bold green] {analysis['strongest_hand']}")
-        
-        # Add separator line
-        self.console.rule("[bold green][/bold green]")
         self.console.print()

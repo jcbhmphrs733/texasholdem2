@@ -14,7 +14,7 @@ Modify these settings to customize your tournament format:
 # =============================================================================
 
 # Starting chip count for each bot
-STARTING_CHIPS = 200
+STARTING_CHIPS = 500
 
 # Minimum and maximum number of players allowed in tournament
 MIN_PLAYERS = 2
@@ -25,11 +25,11 @@ MAX_PLAYERS = 10
 # =============================================================================
 
 # Initial blind amounts
-SMALL_BLIND_INITIAL = 15
-BIG_BLIND_INITIAL = 30
+SMALL_BLIND_INITIAL = 10
+BIG_BLIND_INITIAL = 20
 
 # Blind increase settings
-BLIND_INCREASE_FACTOR = 1.5  # Multiply blinds by this factor when increasing
+BLIND_INCREASE_FACTOR = 2  # Multiply blinds by this factor when increasing
 BLIND_INCREASE_FREQUENCY = 3  # Increase blinds every N hands
 
 # Alternative: You can also define a custom blind schedule
@@ -213,11 +213,11 @@ if __name__ == "__main__":
     if warnings:
         print("\nConfiguration Warnings:")
         for warning in warnings:
-            print(f"  ⚠️  {warning}")
+            print(f"  {warning}")
     else:
-        print("\n✅ Configuration looks good!")
+        print("\nConfiguration looks good!")
 else:
     # Auto-validate when imported
     warnings = validate_settings()
     if warnings:
-        print("⚠️  Tournament configuration warnings detected. Run 'python configure_tournament.py' to see details.")
+        print("Tournament configuration warnings detected. Run 'python configure_tournament.py' to see details.")
