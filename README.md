@@ -1,10 +1,15 @@
 # Texas Hold'em Bot Hackathon
 
-Welcome to the Texas Hold'em Bot Hackathon! Create your own poker bot to compete against other participants using our automated tournament system.
+Welcome to the Texas Hold'em Bot Hackathon! Create your own poker bot to compete against other participants using our automated tournament system. If this is your first time playing Texas Hold'em or you if would like a quick refresher, click here -> [Texas Hold'em](https://en.wikipedia.org/wiki/Texas_hold_%27em)
+
 
 ## Quick Start
 
-1. **Create your bot file**: Add a `.py` file to the `player_pool/` directory
+1. **Add dependancies**
+    ```bash
+    python -m pip install rich treys
+    ```
+2. **Create your bot file**: Add a `.py` file to the `player_pool/` directory
 2. **Implement your bot**: Create a class that inherits from `ParentBot`
 3. **Test your bot**: Use the Dojo in `botDev/` or run `python main_tournament.py`
 4. **Your bot is automatically included**: The system discovers and includes all valid bots!
@@ -36,7 +41,7 @@ The tournament uses an **automatic bot discovery system**. Simply:
    python main_tournament.py
    ```
 
-Your bot will be **automatically discovered and included** in the tournament!
+Your bot will be **automatically discovered and included** in the tournament after a quick validation to ensure neccesary requirements have been met!
 
 ## Bot Requirements
 
