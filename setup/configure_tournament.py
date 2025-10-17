@@ -25,12 +25,12 @@ MAX_PLAYERS = 10
 # =============================================================================
 
 # Initial blind amounts
-SMALL_BLIND_INITIAL = 10
-BIG_BLIND_INITIAL = 20
+SMALL_BLIND_INITIAL = 5
+BIG_BLIND_INITIAL = 10
 
 # Blind increase settings
-BLIND_INCREASE_FACTOR = 2  # Multiply blinds by this factor when increasing
-BLIND_INCREASE_FREQUENCY = 3  # Increase blinds every N hands
+BLIND_INCREASE_FACTOR = 1.5  # Multiply blinds by this factor when increasing
+BLIND_INCREASE_FREQUENCY = 5  # Increase blinds every N hands
 
 # Alternative: You can also define a custom blind schedule
 # Set BLIND_INCREASE_FREQUENCY to 0 to use this schedule instead

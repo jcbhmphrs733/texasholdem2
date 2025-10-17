@@ -305,7 +305,7 @@ texasholdem/
 │   ├── tournament_ui.py        # UI components
 │   ├── tournament_stats.py     # Statistics tracking
 │   └── configure_tournament.py # Tournament settings
-├── versionControl/             # Repository management
+├── security/                   # Security & anti-cheat systems
 │   ├── SECURITY.md             # Security guidelines
 │   └── validate_tournament.py  # Tournament validation
 └── README.md                   # This file

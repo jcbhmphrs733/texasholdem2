@@ -255,6 +255,10 @@ class TexasHoldemGame:
         
         # Reset all players for new hand
         for player in self.players:
+            # Clear hands securely for protected bots
+            if hasattr(player, '_tournament_clear_hand'):
+                player._tournament_clear_hand()
+            
             player.reset_for_new_hand()
         
         # Post blinds
@@ -275,12 +279,18 @@ class TexasHoldemGame:
         
         # Small blind
         sb_amount = min(self.small_blind, self.players[sb_pos].chips)
-        self.players[sb_pos].chips -= sb_amount
+        if hasattr(self.players[sb_pos], '_tournament_subtract_chips'):
+            self.players[sb_pos]._tournament_subtract_chips(sb_amount)
+        else:
+            self.players[sb_pos].chips -= sb_amount
         self.players[sb_pos].current_bet = sb_amount
         
         # Big blind
         bb_amount = min(self.big_blind, self.players[bb_pos].chips)
-        self.players[bb_pos].chips -= bb_amount
+        if hasattr(self.players[bb_pos], '_tournament_subtract_chips'):
+            self.players[bb_pos]._tournament_subtract_chips(bb_amount)
+        else:
+            self.players[bb_pos].chips -= bb_amount
         self.players[bb_pos].current_bet = bb_amount
         
         self.pot = sb_amount + bb_amount
@@ -291,7 +301,13 @@ class TexasHoldemGame:
         for player in self.players:
             card1 = self.deck.draw(1)[0]
             card2 = self.deck.draw(1)[0]
-            player.receive_cards([card1, card2])
+            cards = [card1, card2]
+            
+            # Use secure method if player is protected, otherwise standard method
+            if hasattr(player, '_tournament_deal_cards'):
+                player._tournament_deal_cards(cards)
+            else:
+                player.receive_cards(cards)
     
     def get_active_players(self) -> List[Any]:
         """Get players who haven't folded."""
@@ -313,6 +329,13 @@ class TexasHoldemGame:
         Returns:
             Tuple of (is_valid, error_message)
         """
+        # Note: Chip manipulation is now impossible due to PitBoss lockdown
+        # Previous validation code removed - chips cannot be manipulated
+        
+        # Validate chip count is positive
+        if player.chips < 0:
+            return False, f"RULE VIOLATION: Bot {player.name} has negative chips: {player.chips}"
+        
         if action == 'fold':
             return True, ""
         
@@ -330,15 +353,19 @@ class TexasHoldemGame:
         
         elif action == 'raise':
             if amount <= player.current_bet:
-                return False, "Raise amount must be greater than current bet"
+                return False, f"Raise amount ({amount}) must be greater than current bet ({player.current_bet})"
             
             additional_chips_needed = amount - player.current_bet
             if additional_chips_needed > player.chips:
-                return False, "Not enough chips for this raise"
+                return False, f"Not enough chips for this raise. Need {additional_chips_needed} but only have {player.chips}"
+            
+            # Stricter validation for raise amount
+            if amount > player.chips + player.current_bet:
+                return False, f"RULE VIOLATION: Raise amount {amount} exceeds total available chips {player.chips + player.current_bet}"
             
             min_raise = self.current_bet + self.big_blind
             if amount < min_raise and additional_chips_needed < player.chips:
-                return False, f"Minimum raise is ${min_raise}"
+                return False, f"Minimum raise is ${min_raise}, attempted ${amount}"
             
             return True, ""
         
@@ -383,7 +410,14 @@ class TexasHoldemGame:
             else:
                 result['display_action'] = 'call'
             
-            player.chips -= call_amount
+            # Use secure chip modification if available
+            if hasattr(player, '_tournament_subtract_chips'):
+                player._tournament_subtract_chips(call_amount)
+            else:
+                player.chips -= call_amount
+                # Update legitimate chip tracking for non-protected bots
+                if hasattr(player, '_original_chip_count'):
+                    player._original_chip_count -= call_amount
             player.current_bet += call_amount
             self.pot += call_amount
             result['display_amount'] = call_amount
@@ -400,7 +434,14 @@ class TexasHoldemGame:
             else:
                 result['display_action'] = 'raise'
             
-            player.chips -= additional_chips_needed
+            # Use secure chip modification if available
+            if hasattr(player, '_tournament_subtract_chips'):
+                player._tournament_subtract_chips(additional_chips_needed)
+            else:
+                player.chips -= additional_chips_needed
+                # Update legitimate chip tracking for non-protected bots
+                if hasattr(player, '_original_chip_count'):
+                    player._original_chip_count -= additional_chips_needed
             player.current_bet = amount
             self.pot += additional_chips_needed
             self.current_bet = amount
@@ -610,7 +651,14 @@ class TexasHoldemGame:
             if eligible_winners:
                 prize_per_winner = self.main_pot // len(eligible_winners)
                 for winner in eligible_winners:
-                    winner.chips += prize_per_winner
+                    # Use secure chip modification if available
+                    if hasattr(winner, '_tournament_add_chips'):
+                        winner._tournament_add_chips(prize_per_winner)
+                    else:
+                        winner.chips += prize_per_winner
+                        # Update legitimate chip tracking for non-protected bots
+                        if hasattr(winner, '_original_chip_count'):
+                            winner._original_chip_count += prize_per_winner
                     total_distributed += prize_per_winner
         
         # Distribute side pots
@@ -621,7 +669,14 @@ class TexasHoldemGame:
             if eligible_winners:
                 prize_per_winner = side_pot['amount'] // len(eligible_winners)
                 for winner in eligible_winners:
-                    winner.chips += prize_per_winner
+                    # Use secure chip modification if available
+                    if hasattr(winner, '_tournament_add_chips'):
+                        winner._tournament_add_chips(prize_per_winner)
+                    else:
+                        winner.chips += prize_per_winner
+                        # Update legitimate chip tracking for non-protected bots
+                        if hasattr(winner, '_original_chip_count'):
+                            winner._original_chip_count += prize_per_winner
                     total_distributed += prize_per_winner
         
         return total_distributed

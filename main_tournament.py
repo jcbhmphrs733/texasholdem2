@@ -7,10 +7,27 @@ from setup.tournament_analysis import TournamentAnalyzer
 from player_pool import get_all_bots, get_bot_summary
 import setup.configure_tournament as config
 from ParentBot import ParentBot
+from PitBoss import PitBoss
 import random
 from typing import Dict, Any, Tuple
 
 console = Console()
+
+def check_and_remove_cheaters(game):
+    """Remove players eliminated for cheating from the active game"""
+    eliminated_players = []
+    
+    for i, player in enumerate(game.players):
+        if (hasattr(player, 'is_eliminated_for_cheating') and 
+            player.is_eliminated_for_cheating and 
+            player.chips > 0):
+            # Set chips to 0 to trigger natural elimination
+            if hasattr(player, '_tournament_set_chips'):
+                player._tournament_set_chips(0)
+            eliminated_players.append(player.name)
+    
+    if eliminated_players:
+        print(f"REMOVED cheaters from tournament: {', '.join(eliminated_players)}")
 
 def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str, 
                      stats: TournamentStats):
@@ -23,6 +40,9 @@ def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str,
         round_name: Name of the betting round ('Pre-flop', 'Flop', etc.)
         stats: Statistics tracker
     """
+    # Check for and remove cheaters at the start of each betting round
+    check_and_remove_cheaters(game)
+    
     ui.display_betting_round_header(round_name)
     
     if round_name != "Pre-flop":
@@ -39,6 +59,8 @@ def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str,
     players_to_act = [pos for pos in betting_order if not game.players[pos].folded and not game.players[pos].all_in]
     
     players_acted = set()
+    invalid_attempts = {}  # Track invalid attempts per player position
+    max_invalid_attempts = 3
     
     while True:
         action_taken_this_round = False
@@ -46,13 +68,19 @@ def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str,
         for pos in betting_order:
             player = game.players[pos]
             
+            # Check if bot has been eliminated for cheating
+            if hasattr(player, 'is_eliminated_for_cheating') and player.is_eliminated_for_cheating:
+                # Set chips to 0 to trigger natural tournament elimination
+                if player.chips > 0:
+                    if hasattr(player, '_tournament_set_chips'):
+                        player._tournament_set_chips(0)
+                    print(f"ELIMINATED {player.name} from tournament (cheating)")
+                continue
+            
             if player.folded or player.all_in:
                 continue
-                
-            if last_raiser_pos is not None:
-                if pos in players_acted and pos != last_raiser_pos:
-                    players_acted.discard(pos)
             
+            # Skip players who have already acted, unless there was a raise after they acted
             if pos in players_acted:
                 continue
             
@@ -69,15 +97,95 @@ def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str,
             # Get enhanced player decision state
             player_game_state = game.get_player_game_state(player)
             
-            action, amount = player.decide_action(player_game_state)
-            
-            is_valid, error_msg = game.validate_action(player, action, amount)
-            
-            if not is_valid:
+            # Validation loop for player action
+            while True:
+                action, amount = player.decide_action(player_game_state)
+                
+                is_valid, error_msg = game.validate_action(player, action, amount)
+                
+                if is_valid:
+                    break  # Valid action, proceed with execution
+                
+                # Track invalid attempts to prevent infinite loops
+                if pos not in invalid_attempts:
+                    invalid_attempts[pos] = 0
+                invalid_attempts[pos] += 1
+                
                 ui.display_invalid_action_message(error_msg)
                 ui.display_player_action_result(player.name, 'invalid_' + action, amount)
+                
+                # Check for chip manipulation (cheating)
+                if "CHIP MANIPULATION DETECTED" in error_msg:
+                    print(f"\nPIT BOSS ALERT:")
+                    print(f"Bot: {player.name}")
+                    print(f"Violation: {error_msg}")
+                    print(f"Action attempted: {action} with amount {amount}")
+                    print(f"The house has corrected chips to: {player.chips}")
+                    print(f"Bot will retry with legitimate chip count.\n")
+                    
+                    # Continue to let bot try again with corrected chips (but track attempts)
+                    if invalid_attempts[pos] >= max_invalid_attempts:
+                        print(f"WARNING: {player.name} has made {invalid_attempts[pos]} invalid attempts. Forcing fold to prevent infinite loop.")
+                        action, amount = 'fold', 0
+                        break
+                    
+                    ui.prompt_action_continue(player.name)
+                    continue
+                
+                # Check for other serious rule violations
+                elif "RULE VIOLATION" in error_msg:
+                    print(f"\nSERIOUS RULE VIOLATION DETECTED:")
+                    print(f"Bot: {player.name}")
+                    print(f"Violation: {error_msg}")
+                    print(f"Action attempted: {action} with amount {amount}")
+                    print(f"Current chips: {player.chips}")
+                    print(f"Forcing fold due to rule violation.\n")
+                    
+                    # Force fold for other serious violations
+                    action, amount = 'fold', 0
+                    break
+                
+                # Handle common invalid actions with auto-correction
+                elif invalid_attempts[pos] >= max_invalid_attempts:
+                    print(f"\nWARNING: {player.name} has made {invalid_attempts[pos]} invalid attempts.")
+                    print(f"Auto-correcting to prevent infinite loop...")
+                    
+                    # Auto-correct invalid raise to all-in
+                    if action == 'raise' and player.chips > 0:
+                        action = 'raise'
+                        amount = player.current_bet + player.chips
+                        print(f"Auto-correcting invalid raise to ALL-IN: ${amount}")
+                    
+                    # Auto-correct invalid call to all-in or fold
+                    elif action == 'call':
+                        call_needed = game.current_bet - player.current_bet
+                        if player.chips > 0 and player.chips < call_needed:
+                            action = 'raise'
+                            amount = player.current_bet + player.chips
+                            print(f"Auto-correcting call to ALL-IN: ${amount}")
+                        else:
+                            action = 'fold'
+                            amount = 0
+                            print(f"Auto-correcting to FOLD")
+                    
+                    # Default fallback: force fold
+                    else:
+                        action = 'fold'
+                        amount = 0
+                        print(f"Auto-correcting to FOLD")
+                    
+                    print(f"Proceeding with corrected action: {action} ${amount}")
+                    # The corrected action will be validated in the next iteration
+                    invalid_attempts[pos] = 0  # Reset attempts after correction
+                    continue  # Re-validate the corrected action
+                
+                # Normal retry for first few attempts
                 ui.prompt_action_continue(player.name)
-                continue
+                # Let the loop continue to get a new decision
+            
+            # Reset invalid attempts counter on successful action
+            if pos in invalid_attempts:
+                invalid_attempts[pos] = 0
             
             result = game.execute_action(player, action, amount)
             
@@ -105,6 +213,7 @@ def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str,
             
             if result['display_action'] in ['raise', 'raise_all_in']:
                 last_raiser_pos = pos
+                # When someone raises, clear the acted list except for the raiser
                 players_acted.clear()
                 players_acted.add(pos)
             
@@ -114,13 +223,14 @@ def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str,
             if len(game.get_active_players()) <= 1:
                 return
         
-        # If no actions were taken this iteration and all eligible players have acted, round is complete
-        if not action_taken_this_round:
-            break
-        
-        # Check if all remaining players have acted
+        # Check for betting round completion
+        # Round is complete when:
+        # 1. All bets are equal (from game logic), AND
+        # 2. All eligible players have acted since the last raise
         eligible_players = [pos for pos in betting_order if not game.players[pos].folded and not game.players[pos].all_in]
-        if all(pos in players_acted for pos in eligible_players):
+        
+        if (game.is_betting_round_complete(last_raiser_pos) and 
+            all(pos in players_acted for pos in eligible_players)):
             break
 
 def run_showdown(game: TexasHoldemGame, ui: TournamentUI, stats: TournamentStats):
@@ -140,7 +250,10 @@ def run_showdown(game: TexasHoldemGame, ui: TournamentUI, stats: TournamentStats
         # Single winner (everyone else folded)
         winner = active_players[0]
         total_pot = game.pot
-        winner.chips += total_pot
+        if hasattr(winner, '_tournament_add_chips'):
+            winner._tournament_add_chips(total_pot)
+        else:
+            winner.chips += total_pot
         ui.display_hand_winner(winner.name, total_pot, "Unopposed")
         stats.record_hand_winner(winner.name, total_pot)
         
@@ -171,7 +284,10 @@ def run_showdown(game: TexasHoldemGame, ui: TournamentUI, stats: TournamentStats
         
         # Award chips to winners
         for winner in winners:
-            winner.chips += prize_per_winner
+            if hasattr(winner, '_tournament_add_chips'):
+                winner._tournament_add_chips(prize_per_winner)
+            else:
+                winner.chips += prize_per_winner
         
         # Display pot result
         if len(winners) == 1:
@@ -212,6 +328,46 @@ def run_showdown(game: TexasHoldemGame, ui: TournamentUI, stats: TournamentStats
                 # Ignore callback errors
                 pass
 
+def display_security_report(players):
+    """Display comprehensive security report for all protected bots"""
+    protected_bots = [p for p in players if hasattr(p, 'get_cheat_report')]
+    
+    if not protected_bots:
+        return
+    
+    print("\n" + "=" * 60)
+    print("PIT BOSS SECURITY REPORT")
+    print("=" * 60)
+    
+    total_strikes = 0
+    eliminated_count = 0
+    
+    for bot in protected_bots:
+        report = bot.get_cheat_report()
+        total_strikes += report['strikes']
+        
+        if report['strikes'] > 0:
+            status = "ELIMINATED" if report['eliminated'] else "ACTIVE"
+            print(f"TARGET {report['name']}: {report['strikes']}/{report['max_strikes']} strikes - {status}")
+            
+            if report['eliminated']:
+                eliminated_count += 1
+                print(f"   ELIMINATED for excessive cheating!")
+            
+            # Show strike details
+            for strike in report['cheat_log'][-3:]:  # Show last 3 strikes
+                print(f"   Strike {strike['strike']}: {strike['type']} - {strike['details'][:50]}...")
+    
+    if total_strikes == 0:
+        print("CLEAN TOURNAMENT: No cheating attempts detected!")
+    else:
+        print(f"\nSECURITY SUMMARY:")
+        print(f"   Total strikes issued: {total_strikes}")
+        print(f"   Bots eliminated: {eliminated_count}")
+        print(f"   PitBoss system: FULLY OPERATIONAL")
+    
+    print("=" * 60 + "\n")
+
 def main():
     # Initialize UI, statistics, and analyzer
     ui = TournamentUI()
@@ -223,19 +379,27 @@ def main():
     console.print(config.get_tournament_settings_summary())
     
     # Get all participant bots from player pool
-    participant_bots = get_all_bots(starting_chips=config.STARTING_CHIPS)
+    raw_bots = get_all_bots(starting_chips=config.STARTING_CHIPS)
     
-    if not participant_bots:
+    if not raw_bots:
         ui.display_player_count_error(0)
         return
     
-    if len(participant_bots) < config.MIN_PLAYERS:
-        ui.display_player_count_error(len(participant_bots))
+    if len(raw_bots) < config.MIN_PLAYERS:
+        ui.display_player_count_error(len(raw_bots))
         return
     
-    if len(participant_bots) > config.MAX_PLAYERS:
-        ui.display_player_count_error(len(participant_bots))
-        participant_bots = participant_bots[:config.MAX_PLAYERS]
+    if len(raw_bots) > config.MAX_PLAYERS:
+        ui.display_player_count_error(len(raw_bots))
+        raw_bots = raw_bots[:config.MAX_PLAYERS]
+    
+    # Assign a pit boss to watch each bot and prevent cheating
+    print("The Pit Boss is now watching all bots for cheating...")
+    participant_bots = []
+    for bot in raw_bots:
+        protected_bot = PitBoss(bot, config.STARTING_CHIPS)
+        participant_bots.append(protected_bot)
+        print(f"   Pit Boss watching: {bot.name}")
     
     players = participant_bots
     
@@ -387,6 +551,9 @@ def main():
     
     # Display comprehensive analysis (no podium - final results are at the end)
     analyzer.display_comprehensive_analysis(stats, game.players)
+    
+    # Generate security report if CheaterBot participated
+    display_security_report(game.players)
     
     # Show final standings (simplified version after detailed analysis)
     # ui.display_final_standings(game.players)

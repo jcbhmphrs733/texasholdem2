@@ -27,11 +27,18 @@ class Coyote(ParentBot):
         call_amount = game_state['current_bet'] - game_state['player_bet']
         is_preflop = len(game_state['community_cards']) == 0
         
-        # Suited bonus pre-flop
+        # Enhanced suited card handling pre-flop - ensure minimum playability
         if is_preflop and len(self.hand) == 2:
+            ranks = [Card.get_rank_int(card) for card in self.hand]
             suits = [Card.get_suit_int(card) for card in self.hand]
-            if suits[0] == suits[1]:
-                hand_strength = max(hand_strength, 0.35)
+            if suits[0] == suits[1]:  # Suited cards
+                # Ensure all suited cards get at least moderate strength
+                # Higher minimum for connected suited cards
+                gap = abs(max(ranks) - min(ranks))
+                if gap <= 2:  # Suited connectors or one-gappers
+                    hand_strength = max(hand_strength, 0.45)  # Always callable
+                else:
+                    hand_strength = max(hand_strength, 0.38)  # Most other suited cards
         
         # Position factor (better position = more aggressive)
         active_players = len([p for p in game_state.get('players', []) if not getattr(p, 'folded', False)])
@@ -41,12 +48,24 @@ class Coyote(ParentBot):
         call_thresh = self.call_threshold - position_factor * 0.1
         raise_thresh = self.raise_threshold - position_factor * 0.1
         
-        # Pre-flop: aggressive play
+        # Pre-flop: aggressive play with better suited card protection
         if is_preflop:
-            if hand_strength < 0.15:  # Trash
-                return ('check', 0) if can_check else ('fold', 0) if call_amount > self.chips * 0.03 else ('call', game_state['current_bet'])
-            elif hand_strength < call_thresh:  # Weak
-                return ('check', 0) if can_check else ('call', game_state['current_bet']) if call_amount <= self.chips * 0.08 else ('fold', 0)
+            # Check if we have suited cards for special handling
+            ranks = [Card.get_rank_int(card) for card in self.hand] if len(self.hand) == 2 else []
+            suits = [Card.get_suit_int(card) for card in self.hand] if len(self.hand) == 2 else []
+            is_suited = len(suits) == 2 and suits[0] == suits[1]
+            
+            if hand_strength < 0.12:  # Truly trash (lowered from 0.15)
+                return ('check', 0) if can_check else ('fold', 0) if call_amount > self.chips * 0.05 else ('call', game_state['current_bet'])
+            elif hand_strength < call_thresh:  # Weak - more generous with suited cards
+                if can_check:
+                    return ('check', 0)
+                elif is_suited and call_amount <= self.chips * 0.12:  # More generous for suited
+                    return ('call', game_state['current_bet'])
+                elif call_amount <= self.chips * 0.08:
+                    return ('call', game_state['current_bet'])
+                else:
+                    return ('fold', 0)
             elif hand_strength < raise_thresh:  # Good
                 return ('check', 0) if can_check else ('call', game_state['current_bet']) if call_amount <= self.chips else ('fold', 0)
             else:  # great hole cards
@@ -148,14 +167,49 @@ class Coyote(ParentBot):
         suits = [Card.get_suit_int(card) for card in self.hand]
         is_suited = suits[0] == suits[1]
         high, low = max(ranks), min(ranks)
+        gap = abs(high - low)
         
         # Pocket pairs
         if ranks[0] == ranks[1]:
             return 0.6 + (high - 2) * 0.035  # 60% for 22, scaling to 95% for AA
         
-        # Non-pairs: base strength from high card, bonuses for connectivity and suits
-        base = 0.1 + (high - 2) * 0.03 + (low - 2) * 0.015
-        gap_bonus = max(0, 0.1 - abs(high - low) * 0.02)
-        suit_bonus = 0.15 if is_suited else 0
+        # Enhanced suited card evaluation - much stronger bonuses
+        if is_suited:
+            # Strong suited hands deserve higher base strength
+            base = 0.2 + (high - 2) * 0.025 + (low - 2) * 0.02
+            
+            # Better connectivity bonuses for suited cards
+            if gap == 1:  # Suited connectors (e.g., 7♠6♠)
+                connector_bonus = 0.25
+            elif gap == 2:  # One-gap suited (e.g., 8♠6♠)
+                connector_bonus = 0.15
+            elif gap == 3:  # Two-gap suited (e.g., 9♠6♠)
+                connector_bonus = 0.1
+            else:
+                connector_bonus = 0.05  # Any suited gets some bonus
+            
+            # Special bonuses for ace-suited and high suited cards
+            if high == 14:  # Ace suited (A♠5♠, A♠2♠, etc.)
+                ace_bonus = 0.2
+            elif high >= 11:  # High suited cards (J♠+)
+                ace_bonus = 0.1
+            else:
+                ace_bonus = 0.05
+            
+            return min(0.85, base + connector_bonus + ace_bonus)
         
-        return min(0.85, base + gap_bonus + suit_bonus)
+        # Non-suited hands - improved connectivity evaluation
+        else:
+            base = 0.1 + (high - 2) * 0.03 + (low - 2) * 0.015
+            
+            # Better gap evaluation for non-suited
+            if gap == 1:  # Connectors (e.g., 8♠7♦)
+                gap_bonus = 0.15
+            elif gap == 2:  # One-gap (e.g., 9♠7♦)
+                gap_bonus = 0.08
+            elif gap == 3:  # Two-gap (e.g., 10♠7♦)
+                gap_bonus = 0.04
+            else:
+                gap_bonus = 0
+            
+            return min(0.75, base + gap_bonus)

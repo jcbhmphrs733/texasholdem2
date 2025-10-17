@@ -158,6 +158,9 @@ def get_all_bots(starting_chips: int = 500) -> List[ParentBot]:
             bot = bot_class(bot_name)
             # Set chips for tournament
             bot.chips = starting_chips
+            # ANTI-CHEAT: Track original chip count to detect manipulation
+            bot._original_chip_count = starting_chips
+            bot._tournament_starting_chips = starting_chips
             bots.append(bot)
             
         except Exception as e:

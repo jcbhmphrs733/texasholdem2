@@ -1,6 +1,6 @@
-# REPOSITORY SECURITY GUIDELINES
+# TOURNAMENT SECURITY SYSTEMS
 
-## FOR PARTICIPANTS: What You Can and Cannot Modify
+## Anti-Cheat & Protection Infrastructure
 
 ### **SAFE TO MODIFY** (Your Sandbox):
 ```
@@ -28,7 +28,8 @@ Setup/                  ← Tournament system components
 ├── tournament_analysis.py ← Post-game analysis
 └── configure_tournament.py ← Tournament settings
 
-versionControl/         ← Repository management
+security/               ← Security & anti-cheat systems
+├── PitBoss.py          ← Casino-style bot protection wrapper
 ├── SECURITY.md         ← This file
 ├── validate_tournament.py ← System validation
 └── secure_repo.py      ← Security tools
@@ -56,4 +57,41 @@ versionControl/         ← Repository management
 2. **Study** `game_logic.py` to understand poker rules
 3. **Copy** `botDev/template.py` to create `player_pool/YourBot.py`
 4. **Test** with `dojo.py` to validate your strategy
+
+---
+
+## PitBoss Anti-Cheat System
+
+### **What is PitBoss?**
+A casino-style security wrapper that prevents bots from cheating by manipulating chips or cards.
+
+### **How It Works:**
+- **Wrapper Pattern**: Every bot is automatically wrapped with `PitBoss` protection
+- **Read-Only Attributes**: Chips and hole cards become completely read-only
+- **Secure Methods**: Only the tournament system can modify chips through authorized methods
+- **Perfect Conservation**: Guarantees no chips are lost or gained illegally
+
+### **Protection Features:**
+```python
+# ALLOWED - Reading values
+bot.chips           # Returns current chip count
+bot.hand           # Returns copy of hole cards
+
+# BLOCKED - All manipulation attempts
+bot.chips = 1000    # AttributeError: Direct chip access denied!
+bot.chips += 200    # AttributeError: Direct chip access denied!
+bot.hand = [A, A]   # AttributeError: Hole card manipulation blocked!
+```
+
+### **House-Authorized Operations:**
+- `_tournament_add_chips(amount)` - Award winnings
+- `_tournament_subtract_chips(amount)` - Collect bets
+- `_tournament_deal_cards(cards)` - Deal hole cards
+- `_tournament_clear_hand()` - Collect cards for new hand
+
+### **Security Guarantees:**
+- **Chip Conservation**: Total chips remain constant (5 players × $500 = $2,500)
+- **Manipulation Prevention**: No bot can artificially inflate chip counts
+- **Fair Play**: All bots operate under identical restrictions
+- **Casino Oversight**: PitBoss monitors all transactions
 5. **Submit** only your bot file in `player_pool/`
