@@ -21,6 +21,7 @@ class YourBotNameGoesHere(ParentBot):
         IMPLEMENT THIS METHOD with your bot's decision logic.
         Return: (action, amount) where action is 'fold', 'check', 'call', or 'raise'
         """
+        self.hand = game_state['hand']
         self.current_game_state = game_state
         can_check = game_state['current_bet'] == game_state['player_bet']
         hand_strength = self.get_hand_strength()

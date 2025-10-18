@@ -17,8 +17,10 @@ class Coyote(ParentBot):
         self.raise_threshold = 0.7       # Raise with 70%+ hands
         self.current_game_state = None   # Store game state for hand evaluation
         
+        
     def decide_action(self, game_state: Dict[str, Any]) -> Tuple[str, int]:
         
+        self.hand = game_state.get('hand', [])
         # Store the game state for get_hand_strength() calls
         self.current_game_state = game_state
         
