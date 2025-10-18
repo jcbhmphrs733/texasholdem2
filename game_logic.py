@@ -139,9 +139,15 @@ class TexasHoldemGame:
             if player.name == acting_player.name:
                 acting_player_pos = i
                 break
+        acting_player_hand = None
+        for i, player in enumerate(self.players):
+            if player.name == acting_player.name:
+                acting_player_hand = player.hand
+                break
         
         # Add enhanced information
         game_state.update({
+            'hand': acting_player_hand,
             'opponents': opponents,
             'your_position': acting_player_pos,
             'dealer_position': self.dealer_pos,

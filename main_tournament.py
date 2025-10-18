@@ -177,7 +177,7 @@ def run_betting_round(game: TexasHoldemGame, ui: TournamentUI, round_name: str,
                     print(f"Proceeding with corrected action: {action} ${amount}")
                     # The corrected action will be validated in the next iteration
                     invalid_attempts[pos] = 0  # Reset attempts after correction
-                    continue  # Re-validate the corrected action
+                    break  # Re-validate the corrected action
                 
                 # Normal retry for first few attempts
                 ui.prompt_action_continue(player.name)
